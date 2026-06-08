@@ -35,9 +35,6 @@ export default function EmployeeAttendance() {
     setAttLoading(false)
   }
 
-  const present = records.filter(r => r.status === 'present').length
-  const absent = records.filter(r => r.status === 'absent').length
-  const total = records.length
 
   const badge = (s) => {
     const map = {
@@ -92,20 +89,6 @@ export default function EmployeeAttendance() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: 'Total Days', value: total, color: 'text-white' },
-          { label: 'Present', value: present, color: 'text-emerald-400' },
-          { label: 'Absent', value: absent, color: 'text-red-400' },
-        ].map((s, i) => (
-          <div key={i} className="card text-center">
-            <p className={`text-2xl font-bold font-mono ${s.color}`}>{s.value}</p>
-            <p className="text-sm text-slate-400 mt-1">{s.label}</p>
-          </div>
-        ))}
       </div>
 
       {/* History */}

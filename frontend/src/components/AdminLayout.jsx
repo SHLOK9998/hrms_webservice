@@ -8,12 +8,12 @@ import { useState } from 'react'
 
 const navItems = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/admin/employees', label: 'Employees', icon: Users },
-  { to: '/admin/leaves', label: 'Leave Management', icon: CalendarCheck },
   { to: '/admin/attendance', label: 'Attendance', icon: Clock },
-  { to: '/admin/payroll', label: 'Payroll', icon: DollarSign },
-  { to: '/admin/holidays', label: 'Holidays', icon: CalendarDays },
   { to: '/admin/tasks', label: 'Task Tracker', icon: CheckSquare },
+  { to: '/admin/leaves', label: 'Leave Management', icon: CalendarCheck },
+  { to: '/admin/payroll', label: 'Payroll', icon: DollarSign },
+  { to: '/admin/employees', label: 'Employees', icon: Users },
+  { to: '/admin/holidays', label: 'Holidays', icon: CalendarDays },
   { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
 ]
 
