@@ -5,6 +5,8 @@ import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import AdminLayout from './components/AdminLayout'
 import EmployeeLayout from './components/EmployeeLayout'
+import SuperadminLayout from './components/SuperadminLayout'
+import SuperadminDashboard from './pages/superadmin/Dashboard'
 
 // Admin pages
 import AdminDashboard from './pages/admin/Dashboard'
@@ -33,16 +35,27 @@ function ProtectedRoute({ children, role }) {
     </div>
   )
   if (!user) return <Navigate to="/login" replace />
-  if (role && user.role !== role) return <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} replace />
+  if (role && user.role !== role) {
+    if (user.role === 'superadmin') return <Navigate to="/superadmin" replace />
+    return <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} replace />
+  }
   return children
 }
 
 function AppRoutes() {
   const { user } = useAuth()
+  const getRedirectPath = (role) => {
+    if (role === 'superadmin') return '/superadmin'
+    return role === 'admin' ? '/admin' : '/employee'
+  }
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} /> : <Login />} />
-      <Route path="/forgot-password" element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} /> : <ForgotPassword />} />
+      <Route path="/login" element={user ? <Navigate to={getRedirectPath(user?.role)} /> : <Login />} />
+      <Route path="/forgot-password" element={user ? <Navigate to={getRedirectPath(user?.role)} /> : <ForgotPassword />} />
+
+      <Route path="/superadmin" element={<ProtectedRoute role="superadmin"><SuperadminLayout /></ProtectedRoute>}>
+        <Route index element={<SuperadminDashboard />} />
+      </Route>
 
       <Route path="/admin" element={<ProtectedRoute role="admin"><AdminLayout /></ProtectedRoute>}>
         <Route index element={<AdminDashboard />} />
@@ -66,7 +79,7 @@ function AppRoutes() {
         <Route path="tasks" element={<EmployeeTasks />} />
       </Route>
 
-      <Route path="/" element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} /> : <Navigate to="/login" />} />
+      <Route path="/" element={user ? <Navigate to={getRedirectPath(user?.role)} /> : <Navigate to="/login" />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )

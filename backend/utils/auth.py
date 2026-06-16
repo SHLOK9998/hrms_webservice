@@ -44,10 +44,30 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     user["_id"] = str(user["_id"])
     return user
 
-async def get_current_admin(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+async def get_current_tenant_user(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") == "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superadmins cannot access tenant-level data"
+        )
+    if not current_user.get("organization_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant organization is missing"
+        )
     return current_user
 
-async def get_current_employee(current_user: dict = Depends(get_current_user)):
+async def get_current_admin(current_user: dict = Depends(get_current_tenant_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return current_user
+
+async def get_current_employee(current_user: dict = Depends(get_current_tenant_user)):
+    if current_user.get("role") != "employee":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee access required")
+    return current_user
+
+async def get_current_superadmin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "superadmin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin access required")
     return current_user

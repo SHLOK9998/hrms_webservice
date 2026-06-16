@@ -5,6 +5,7 @@ from enum import Enum
 
 
 class UserRole(str, Enum):
+    superadmin = "superadmin"
     admin = "admin"
     employee = "employee"
 
@@ -54,6 +55,7 @@ class UserCreate(BaseModel):
     password: str
     full_name: str
     role: UserRole = UserRole.employee
+    organization_id: Optional[str] = None
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -65,10 +67,29 @@ class Token(BaseModel):
     role: str
     user_id: str
     full_name: str
+    organization_id: Optional[str] = None
 
 class TokenData(BaseModel):
     email: Optional[str] = None
     role: Optional[str] = None
+    organization_id: Optional[str] = None
+
+# ── Organization ─────────────────────────────────────────────────────────────
+class OrganizationCreate(BaseModel):
+    name: str
+
+class OrganizationResponse(BaseModel):
+    id: str
+    name: str
+    created_at: datetime
+    is_active: bool
+    admin_email: Optional[str] = None
+
+class OrganizationWithAdminCreate(BaseModel):
+    name: str
+    admin_email: EmailStr
+    admin_password: str
+    admin_full_name: str
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
@@ -104,6 +125,9 @@ class EmployeeCreate(BaseModel):
     leave_balance: float = 12.0
 
 class EmployeeUpdate(BaseModel):
+    employee_id: Optional[str] = None
+    email: Optional[EmailStr] = None
+    date_of_joining: Optional[str] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
     department: Optional[str] = None

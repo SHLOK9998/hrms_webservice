@@ -6,7 +6,7 @@ from utils.timezone import get_current_time, get_current_date
 from bson import ObjectId
 from database import get_database
 from schemas import AttendanceCreate
-from utils.auth import get_current_admin, get_current_user
+from utils.auth import get_current_admin, get_current_tenant_user
 import io
 
 router = APIRouter(prefix="/api/attendance", tags=["Attendance"])
@@ -22,7 +22,7 @@ async def get_all_attendance(
     current_user=Depends(get_current_admin),
 ):
     db = get_database()
-    query = {}
+    query = {"organization_id": current_user["organization_id"]}
     if employee_id:
         query["employee_id"] = employee_id
     if month:
@@ -31,19 +31,25 @@ async def get_all_attendance(
     return [serialize(r) for r in records]
 
 @router.get("/my")
-async def get_my_attendance(current_user=Depends(get_current_user)):
+async def get_my_attendance(current_user=Depends(get_current_tenant_user)):
     db = get_database()
-    employee = await db.employees.find_one({"email": current_user["email"]})
+    employee = await db.employees.find_one({"email": current_user["email"], "organization_id": current_user["organization_id"]})
     if not employee:
         return []
-    records = await db.attendance.find({"employee_id": employee["employee_id"]}).sort("date", -1).to_list(100)
+    records = await db.attendance.find({
+        "employee_id": employee["employee_id"],
+        "organization_id": current_user["organization_id"]
+    }).sort("date", -1).to_list(100)
     return [serialize(r) for r in records]
 
 @router.get("/today")
 async def get_today_attendance(current_user=Depends(get_current_admin)):
     db = get_database()
     today = get_current_date().isoformat()
-    records = await db.attendance.find({"date": today}).to_list(1000)
+    records = await db.attendance.find({
+        "date": today,
+        "organization_id": current_user["organization_id"]
+    }).to_list(1000)
     return [serialize(r) for r in records]
 
 @router.get("/today/count")
@@ -51,18 +57,26 @@ async def get_today_checkin_count(current_user=Depends(get_current_admin)):
     """Return count of employees who checked in today."""
     db = get_database()
     today = get_current_date().isoformat()
-    count = await db.attendance.count_documents({"date": today, "status": "present"})
+    count = await db.attendance.count_documents({
+        "date": today,
+        "status": "present",
+        "organization_id": current_user["organization_id"]
+    })
     return {"checked_in_today": count}
 
 @router.get("/today/status")
-async def get_my_today_status(current_user=Depends(get_current_user)):
+async def get_my_today_status(current_user=Depends(get_current_tenant_user)):
     """Return the current employee's check-in status for today."""
     db = get_database()
-    employee = await db.employees.find_one({"email": current_user["email"]})
+    employee = await db.employees.find_one({"email": current_user["email"], "organization_id": current_user["organization_id"]})
     if not employee:
         return {"checked_in": False, "checked_out": False, "record": None}
     today = get_current_date().isoformat()
-    record = await db.attendance.find_one({"employee_id": employee["employee_id"], "date": today})
+    record = await db.attendance.find_one({
+        "employee_id": employee["employee_id"],
+        "date": today,
+        "organization_id": current_user["organization_id"]
+    })
     if not record:
         return {"checked_in": False, "checked_out": False, "record": None}
     record = serialize(record)
@@ -73,9 +87,9 @@ async def get_my_today_status(current_user=Depends(get_current_user)):
     }
 
 @router.post("/checkin")
-async def check_in(current_user=Depends(get_current_user)):
+async def check_in(current_user=Depends(get_current_tenant_user)):
     db = get_database()
-    employee = await db.employees.find_one({"email": current_user["email"]})
+    employee = await db.employees.find_one({"email": current_user["email"], "organization_id": current_user["organization_id"]})
     if not employee:
         raise HTTPException(status_code=404, detail="Employee profile not found")
     today = get_current_date().isoformat()
@@ -86,6 +100,7 @@ async def check_in(current_user=Depends(get_current_user)):
         "status": "approved",
         "start_date": {"$lte": today},
         "end_date": {"$gte": today},
+        "organization_id": current_user["organization_id"]
     })
     if on_leave:
         raise HTTPException(
@@ -93,7 +108,11 @@ async def check_in(current_user=Depends(get_current_user)):
             detail="You cannot check in during an approved leave day"
         )
 
-    existing = await db.attendance.find_one({"employee_id": employee["employee_id"], "date": today})
+    existing = await db.attendance.find_one({
+        "employee_id": employee["employee_id"],
+        "date": today,
+        "organization_id": current_user["organization_id"]
+    })
     if existing:
         raise HTTPException(status_code=400, detail="Already checked in today")
     now = get_current_time()
@@ -107,6 +126,7 @@ async def check_in(current_user=Depends(get_current_user)):
         "check_out": None,
         "total_hours": None,
         "status": "present",
+        "organization_id": current_user["organization_id"],
         "created_at": now,
     }
     result = await db.attendance.insert_one(record)
@@ -114,13 +134,17 @@ async def check_in(current_user=Depends(get_current_user)):
     return record
 
 @router.post("/checkout")
-async def check_out(current_user=Depends(get_current_user)):
+async def check_out(current_user=Depends(get_current_tenant_user)):
     db = get_database()
-    employee = await db.employees.find_one({"email": current_user["email"]})
+    employee = await db.employees.find_one({"email": current_user["email"], "organization_id": current_user["organization_id"]})
     if not employee:
         raise HTTPException(status_code=404, detail="Employee profile not found")
     today = get_current_date().isoformat()
-    existing = await db.attendance.find_one({"employee_id": employee["employee_id"], "date": today})
+    existing = await db.attendance.find_one({
+        "employee_id": employee["employee_id"],
+        "date": today,
+        "organization_id": current_user["organization_id"]
+    })
     if not existing:
         raise HTTPException(status_code=400, detail="No check-in found for today")
     if existing.get("check_out"):
@@ -134,7 +158,7 @@ async def check_out(current_user=Depends(get_current_user)):
     total_hours = round(delta.total_seconds() / 3600, 2)
 
     await db.attendance.update_one(
-        {"_id": existing["_id"]},
+        {"_id": existing["_id"], "organization_id": current_user["organization_id"]},
         {"$set": {"check_out": now.strftime("%H:%M:%S"), "total_hours": total_hours, "updated_at": now}}
     )
     return {"message": "Checked out successfully", "check_out": now.strftime("%H:%M:%S"), "total_hours": total_hours}
@@ -142,16 +166,24 @@ async def check_out(current_user=Depends(get_current_user)):
 @router.post("/")
 async def mark_attendance(data: AttendanceCreate, current_user=Depends(get_current_admin)):
     db = get_database()
-    existing = await db.attendance.find_one({"employee_id": data.employee_id, "date": data.date})
+    existing = await db.attendance.find_one({
+        "employee_id": data.employee_id,
+        "date": data.date,
+        "organization_id": current_user["organization_id"]
+    })
     if existing:
-        await db.attendance.update_one({"_id": existing["_id"]}, {"$set": data.model_dump()})
+        await db.attendance.update_one(
+            {"_id": existing["_id"], "organization_id": current_user["organization_id"]},
+            {"$set": data.model_dump()}
+        )
         return {"message": "Attendance updated"}
-    employee = await db.employees.find_one({"employee_id": data.employee_id})
+    employee = await db.employees.find_one({"employee_id": data.employee_id, "organization_id": current_user["organization_id"]})
     record = {
         **data.model_dump(),
         "employee_name": employee["full_name"] if employee else "Unknown",
         "employee_email": employee["email"] if employee else "",
         "department": employee.get("department", "") if employee else "",
+        "organization_id": current_user["organization_id"],
         "created_at": get_current_time(),
     }
     result = await db.attendance.insert_one(record)
@@ -163,7 +195,7 @@ async def get_monthly_stats(current_user=Depends(get_current_admin)):
     db = get_database()
     current_month = get_current_date().strftime("%Y-%m")
     pipeline = [
-        {"$match": {"date": {"$regex": f"^{current_month}"}}},
+        {"$match": {"date": {"$regex": f"^{current_month}"}, "organization_id": current_user["organization_id"]}},
         {"$group": {"_id": "$status", "count": {"$sum": 1}}},
     ]
     result = await db.attendance.aggregate(pipeline).to_list(10)
@@ -175,7 +207,11 @@ async def get_avg_hours_stats(current_user=Depends(get_current_admin)):
     db = get_database()
     current_month = get_current_date().strftime("%Y-%m")
     pipeline = [
-        {"$match": {"date": {"$regex": f"^{current_month}"}, "total_hours": {"$ne": None}}},
+        {"$match": {
+            "date": {"$regex": f"^{current_month}"},
+            "total_hours": {"$ne": None},
+            "organization_id": current_user["organization_id"]
+        }},
         {"$group": {
             "_id": "$department",
             "avg_hours": {"$avg": "$total_hours"},
@@ -203,7 +239,7 @@ async def export_attendance_excel(
         raise HTTPException(500, "openpyxl is not installed. Run: pip install openpyxl")
 
     db = get_database()
-    query = {}
+    query = {"organization_id": current_user["organization_id"]}
     if employee_id:
         query["employee_id"] = employee_id
     if month:
@@ -250,7 +286,8 @@ async def export_attendance_excel(
     # Auto-width
     from openpyxl.utils import get_column_letter
     for col in ws.columns:
-        max_len = max(len(str(cell.value or "")) for cell in col)
+        # Avoid empty list crash by using max(..., 1)
+        max_len = max((len(str(cell.value or "")) for cell in col), default=1)
         col_letter = get_column_letter(col[0].column)
         ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 

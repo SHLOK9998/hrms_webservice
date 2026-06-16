@@ -18,6 +18,7 @@ async def register(user_data: UserCreate):
         "password": get_password_hash(user_data.password),
         "full_name": user_data.full_name,
         "role": user_data.role.value,
+        "organization_id": getattr(user_data, "organization_id", None),
         "created_at": get_current_time(),
         "is_active": True,
     }
@@ -31,13 +32,22 @@ async def login(user_data: UserLogin):
     if not user or not verify_password(user_data.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_access_token({"sub": user["email"], "role": user["role"]})
+    org_id = user.get("organization_id")
+    if org_id and not isinstance(org_id, str):
+        org_id = str(org_id)
+
+    token = create_access_token({
+        "sub": user["email"],
+        "role": user["role"],
+        "organization_id": org_id
+    })
     return {
         "access_token": token,
         "token_type": "bearer",
         "role": user["role"],
         "user_id": str(user["_id"]),
         "full_name": user["full_name"],
+        "organization_id": org_id,
     }
 
 @router.get("/me")

@@ -23,7 +23,7 @@ from schemas import (
     ChecklistItemCreate, TaskStatus, STAGE_ORDER,
     TaskCheckSimilarity, TaskSimilarityResponse
 )
-from utils.auth import get_current_user
+from utils.auth import get_current_tenant_user as get_current_user
 from utils.embeddings import get_embedding, cosine_similarity
 import uuid
 import base64
@@ -56,10 +56,10 @@ def can_change_stage(user):
     return user["role"] != "admin"
 
 
-async def validate_not_admin(db, emails):
+async def validate_not_admin(db, emails, organization_id):
     """Ensure none of the assignees are admin users."""
     for email in emails:
-        u = await db.users.find_one({"email": email})
+        u = await db.users.find_one({"email": email, "organization_id": organization_id})
         if u and u.get("role") == "admin":
             raise HTTPException(400, f"Cannot assign task to admin user: {email}")
 
@@ -101,7 +101,7 @@ async def get_tasks(
     current_user=Depends(get_current_user),
 ):
     db = get_database()
-    query = {}
+    query = {"organization_id": current_user["organization_id"]}
     if current_user["role"] != "admin":
         query["$or"] = [
             {"assigned_to": current_user["email"]},
@@ -124,6 +124,7 @@ async def get_tasks(
 async def get_my_tasks(current_user=Depends(get_current_user)):
     db = get_database()
     tasks = await db.tasks.find({
+        "organization_id": current_user["organization_id"],
         "$or": [
             {"assigned_to": current_user["email"]},
             {"created_by_email": current_user["email"]},
@@ -136,12 +137,15 @@ async def get_my_tasks(current_user=Depends(get_current_user)):
 @router.get("/stats")
 async def get_task_stats(current_user=Depends(get_current_user)):
     db = get_database()
-    match = {}
+    match = {"organization_id": current_user["organization_id"]}
     if current_user["role"] != "admin":
-        match = {"$or": [
-            {"assigned_to": current_user["email"]},
-            {"created_by_email": current_user["email"]},
-        ]}
+        match = {
+            "organization_id": current_user["organization_id"],
+            "$or": [
+                {"assigned_to": current_user["email"]},
+                {"created_by_email": current_user["email"]},
+            ]
+        }
     pipeline = [{"$match": match}, {"$group": {"_id": "$status", "count": {"$sum": 1}}}]
     by_status = await db.tasks.aggregate(pipeline).to_list(10)
     total = await db.tasks.count_documents(match)
@@ -157,11 +161,15 @@ async def get_task_stats(current_user=Depends(get_current_user)):
 async def get_employees_for_assign(current_user=Depends(get_current_user)):
     """Return non-admin employees for task assignment dropdowns."""
     db = get_database()
-    admin_emails_cursor = db.users.find({"role": "admin"}, {"email": 1})
+    admin_emails_cursor = db.users.find({
+        "role": "admin",
+        "organization_id": current_user["organization_id"]
+    }, {"email": 1})
     admin_emails = [u["email"] async for u in admin_emails_cursor]
-    employees = await db.employees.find(
-        {"email": {"$nin": admin_emails}}
-    ).sort("full_name", 1).to_list(500)
+    employees = await db.employees.find({
+        "email": {"$nin": admin_emails},
+        "organization_id": current_user["organization_id"]
+    }).sort("full_name", 1).to_list(500)
     return [{"email": e["email"], "full_name": e["full_name"],
              "designation": e.get("designation", ""),
              "department": e.get("department", "")} for e in employees]
@@ -170,7 +178,7 @@ async def get_employees_for_assign(current_user=Depends(get_current_user)):
 @router.get("/{task_id}")
 async def get_task(task_id: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -189,8 +197,11 @@ async def check_task_similarity(data: TaskCheckSimilarity, current_user=Depends(
     text = f"{data.title}\n{data.description or ''}".strip()
     new_vector = await get_embedding(text)
     
-    # Fetch all tasks from db that have embeddings
-    tasks = await db.tasks.find({"embedding": {"$exists": True}}).to_list(1000)
+    # Fetch all tasks from db that have embeddings and belong to same organization
+    tasks = await db.tasks.find({
+        "embedding": {"$exists": True},
+        "organization_id": current_user["organization_id"]
+    }).to_list(1000)
     
     similarities = []
     for task in tasks:
@@ -215,7 +226,7 @@ async def create_task(data: TaskCreate, current_user=Depends(get_current_user)):
     """Any authenticated user can create a task."""
     db = get_database()
     if data.assigned_to:
-        await validate_not_admin(db, data.assigned_to)
+        await validate_not_admin(db, data.assigned_to, current_user["organization_id"])
 
     # Embed task title and description
     text = f"{data.title}\n{data.description or ''}".strip()
@@ -225,6 +236,7 @@ async def create_task(data: TaskCreate, current_user=Depends(get_current_user)):
         **data.model_dump(),
         "status": "todo",
         "embedding": vector,
+        "organization_id": current_user["organization_id"],
         "created_by": current_user["full_name"],
         "created_by_email": current_user["email"],
         "created_at": get_current_time(),
@@ -250,7 +262,7 @@ async def create_task(data: TaskCreate, current_user=Depends(get_current_user)):
 @router.put("/{task_id}")
 async def update_task(task_id: str, data: TaskUpdate, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -260,7 +272,7 @@ async def update_task(task_id: str, data: TaskUpdate, current_user=Depends(get_c
 
     # If updating assignees, validate no admin users
     if "assigned_to" in update_dict:
-        await validate_not_admin(db, update_dict["assigned_to"])
+        await validate_not_admin(db, update_dict["assigned_to"], current_user["organization_id"])
 
     # If updating status, admin cannot and must follow stage rules, and only assignee can update status
     if "status" in update_dict:
@@ -280,7 +292,7 @@ async def update_task(task_id: str, data: TaskUpdate, current_user=Depends(get_c
         "at": get_current_time().isoformat(),
     }
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$set": update_dict, "$push": {"activity": activity_entry}},
     )
     return {"message": "Task updated successfully"}
@@ -289,13 +301,13 @@ async def update_task(task_id: str, data: TaskUpdate, current_user=Depends(get_c
 @router.delete("/{task_id}")
 async def delete_task(task_id: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     # Only admin or creator can delete
     if current_user["role"] != "admin" and task.get("created_by_email") != current_user["email"]:
         raise HTTPException(403, "Only admin or task creator can delete")
-    await db.tasks.delete_one({"_id": ObjectId(task_id)})
+    await db.tasks.delete_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     return {"message": "Task deleted"}
 
 
@@ -304,7 +316,7 @@ async def delete_task(task_id: str, current_user=Depends(get_current_user)):
 @router.patch("/{task_id}/status")
 async def update_task_status(task_id: str, status: TaskStatus, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -326,7 +338,7 @@ async def update_task_status(task_id: str, status: TaskStatus, current_user=Depe
         "at": get_current_time().isoformat(),
     }
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {
             "$set": {"status": status.value, "updated_at": get_current_time()},
             "$push": {"activity": activity_entry},
@@ -340,7 +352,7 @@ async def update_task_status(task_id: str, status: TaskStatus, current_user=Depe
 @router.get("/{task_id}/comments")
 async def get_comments(task_id: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)}, {"comments": 1})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]}, {"comments": 1})
     if not task:
         raise HTTPException(404, "Task not found")
     return task.get("comments", [])
@@ -349,7 +361,7 @@ async def get_comments(task_id: str, current_user=Depends(get_current_user)):
 @router.post("/{task_id}/comments")
 async def add_comment(task_id: str, data: TaskComment, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -362,7 +374,7 @@ async def add_comment(task_id: str, data: TaskComment, current_user=Depends(get_
         "at": get_current_time().isoformat(),
     }
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$push": {"comments": comment}, "$set": {"updated_at": get_current_time()}},
     )
     return comment
@@ -373,7 +385,7 @@ async def add_comment(task_id: str, data: TaskComment, current_user=Depends(get_
 @router.post("/{task_id}/checklists")
 async def add_checklist(task_id: str, data: ChecklistCreate, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -385,7 +397,7 @@ async def add_checklist(task_id: str, data: ChecklistCreate, current_user=Depend
         "created_at": get_current_time().isoformat(),
     }
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$push": {"checklists": checklist}, "$set": {"updated_at": get_current_time()}},
     )
     return checklist
@@ -394,13 +406,13 @@ async def add_checklist(task_id: str, data: ChecklistCreate, current_user=Depend
 @router.put("/{task_id}/checklists/{checklist_id}")
 async def rename_checklist(task_id: str, checklist_id: str, data: ChecklistCreate, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id), "checklists.id": checklist_id},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"], "checklists.id": checklist_id},
         {"$set": {"checklists.$.title": data.title, "updated_at": get_current_time()}},
     )
     return {"message": "Checklist renamed"}
@@ -409,13 +421,13 @@ async def rename_checklist(task_id: str, checklist_id: str, data: ChecklistCreat
 @router.delete("/{task_id}/checklists/{checklist_id}")
 async def delete_checklist(task_id: str, checklist_id: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$pull": {"checklists": {"id": checklist_id}}, "$set": {"updated_at": get_current_time()}},
     )
     return {"message": "Checklist deleted"}
@@ -424,7 +436,7 @@ async def delete_checklist(task_id: str, checklist_id: str, current_user=Depends
 @router.post("/{task_id}/checklists/{checklist_id}/items")
 async def add_checklist_item(task_id: str, checklist_id: str, data: ChecklistItemCreate, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -445,7 +457,7 @@ async def add_checklist_item(task_id: str, checklist_id: str, data: ChecklistIte
     if not found:
         raise HTTPException(404, "Checklist not found")
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$set": {"checklists": checklists, "updated_at": datetime.utcnow()}},
     )
     return item
@@ -454,7 +466,7 @@ async def add_checklist_item(task_id: str, checklist_id: str, data: ChecklistIte
 @router.patch("/{task_id}/checklists/{checklist_id}/items/{item_id}")
 async def toggle_checklist_item(task_id: str, checklist_id: str, item_id: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -468,7 +480,7 @@ async def toggle_checklist_item(task_id: str, checklist_id: str, item_id: str, c
                     break
             break
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$set": {"checklists": checklists, "updated_at": datetime.utcnow()}},
     )
     return {"message": "Item toggled"}
@@ -477,7 +489,7 @@ async def toggle_checklist_item(task_id: str, checklist_id: str, item_id: str, c
 @router.put("/{task_id}/checklists/{checklist_id}/items/{item_id}")
 async def rename_checklist_item(task_id: str, checklist_id: str, item_id: str, data: ChecklistItemCreate, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -491,7 +503,7 @@ async def rename_checklist_item(task_id: str, checklist_id: str, item_id: str, d
                     break
             break
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$set": {"checklists": checklists, "updated_at": datetime.utcnow()}},
     )
     return {"message": "Item renamed"}
@@ -500,7 +512,7 @@ async def rename_checklist_item(task_id: str, checklist_id: str, item_id: str, d
 @router.delete("/{task_id}/checklists/{checklist_id}/items/{item_id}")
 async def delete_checklist_item(task_id: str, checklist_id: str, item_id: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -511,7 +523,7 @@ async def delete_checklist_item(task_id: str, checklist_id: str, item_id: str, c
             cl["items"] = [it for it in cl["items"] if it["id"] != item_id]
             break
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$set": {"checklists": checklists, "updated_at": datetime.utcnow()}},
     )
     return {"message": "Item deleted"}
@@ -522,7 +534,7 @@ async def delete_checklist_item(task_id: str, checklist_id: str, item_id: str, c
 @router.post("/{task_id}/attachments")
 async def upload_attachment(task_id: str, file: UploadFile = File(...), current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -543,7 +555,7 @@ async def upload_attachment(task_id: str, file: UploadFile = File(...), current_
         "uploaded_at": datetime.utcnow().isoformat(),
     }
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$push": {"attachments": attachment}, "$set": {"updated_at": datetime.utcnow()}},
     )
     # Return without data
@@ -554,7 +566,7 @@ async def upload_attachment(task_id: str, file: UploadFile = File(...), current_
 @router.get("/{task_id}/attachments/{attachment_id}/download")
 async def download_attachment(task_id: str, attachment_id: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -573,13 +585,13 @@ async def download_attachment(task_id: str, attachment_id: str, current_user=Dep
 @router.delete("/{task_id}/attachments/{attachment_id}")
 async def delete_attachment(task_id: str, attachment_id: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$pull": {"attachments": {"id": attachment_id}}, "$set": {"updated_at": datetime.utcnow()}},
     )
     return {"message": "Attachment deleted"}
@@ -590,12 +602,12 @@ async def delete_attachment(task_id: str, attachment_id: str, current_user=Depen
 @router.post("/{task_id}/assignees")
 async def add_assignee(task_id: str, email: str = Query(...), current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
-    await validate_not_admin(db, [email])
+    await validate_not_admin(db, [email], current_user["organization_id"])
     assigned = task.get("assigned_to", [])
     if isinstance(assigned, str):
         assigned = [assigned] if assigned else []
@@ -607,7 +619,7 @@ async def add_assignee(task_id: str, email: str = Query(...), current_user=Depen
         "at": get_current_time().isoformat(),
     }
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {
             "$push": {"assigned_to": email, "activity": activity_entry},
             "$set": {"updated_at": get_current_time()},
@@ -619,7 +631,7 @@ async def add_assignee(task_id: str, email: str = Query(...), current_user=Depen
 @router.delete("/{task_id}/assignees/{email}")
 async def remove_assignee(task_id: str, email: str, current_user=Depends(get_current_user)):
     db = get_database()
-    task = await db.tasks.find_one({"_id": ObjectId(task_id)})
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
     if not task:
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
@@ -634,7 +646,7 @@ async def remove_assignee(task_id: str, email: str, current_user=Depends(get_cur
         "at": get_current_time().isoformat(),
     }
     await db.tasks.update_one(
-        {"_id": ObjectId(task_id)},
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {
             "$pull": {"assigned_to": email},
             "$push": {"activity": activity_entry},

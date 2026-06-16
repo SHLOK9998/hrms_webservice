@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from contextlib import asynccontextmanager
 from database import connect_to_mongo, close_mongo_connection
-from routers import auth, employees, leaves, attendance, payroll, announcements, holidays, tasks
+from routers import auth, employees, leaves, attendance, payroll, announcements, holidays, tasks, organizations
 from utils.scheduler import start_leave_increment_scheduler
 
 @asynccontextmanager
@@ -61,6 +61,7 @@ app.include_router(payroll.router)
 app.include_router(announcements.router)
 app.include_router(holidays.router)    # NEW — holiday calendar
 app.include_router(tasks.router)       # NEW — task tracker
+app.include_router(organizations.router)
 
 @app.get("/")
 async def root():
