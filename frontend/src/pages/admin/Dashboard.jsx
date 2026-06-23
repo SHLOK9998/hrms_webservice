@@ -67,7 +67,7 @@ export default function AdminDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Good morning, {user?.full_name?.split(' ')[0]} 👋</h1>
-        <p className="text-slate-400 mt-1">Here's what's happening with your organization today.</p>
+        <p className="text-slate-400 mt-1">Here's what's happening with {user?.organization_name || "your organization"} today.</p>
       </div>
 
       {/* Stat Cards */}

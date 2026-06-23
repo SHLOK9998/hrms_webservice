@@ -6,7 +6,7 @@ from config import settings
 
 async def get_embedding(text: str) -> list[float]:
     """
-    Get 768-dimensional embedding from Gemini's text-embedding-004 model.
+    Get 768-dimensional embedding from Gemini's gemini-embedding-001 model.
     Falls back to a stable random vector if GEMINI_API_KEY is not configured or fails.
     """
     if not settings.GEMINI_API_KEY:
@@ -17,13 +17,14 @@ async def get_embedding(text: str) -> list[float]:
         random.seed(seed)
         return [random.uniform(-0.1, 0.1) for _ in range(768)]
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={settings.GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={settings.GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     payload = {
-        "model": "models/text-embedding-004",
+        "model": "models/gemini-embedding-001",
         "content": {
             "parts": [{"text": text}]
-        }
+        },
+        "outputDimensionality": 768
     }
     
     async with httpx.AsyncClient() as client:

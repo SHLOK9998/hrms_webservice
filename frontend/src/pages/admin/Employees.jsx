@@ -3,7 +3,7 @@ import { Plus, Search, Edit2, Trash2, X, Check, Users } from 'lucide-react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 
-const EMPTY = { employee_id: '', full_name: '', email: '', password: '', phone: '', department: '', designation: '', date_of_joining: '', salary: '', employment_status: 'active', gender: '', address: '', leave_balance: '12' }
+const EMPTY = { employee_id: '', full_name: '', email: '', password: '', phone: '', department: '', designation: '', date_of_joining: '', salary: '', employment_status: 'active', gender: '', address: '', leave_balance: '12', role: 'employee' }
 
 export default function AdminEmployees() {
   const [employees, setEmployees] = useState([])
@@ -38,7 +38,7 @@ export default function AdminEmployees() {
 
   const openAdd = () => { setForm(EMPTY); setEditEmp(null); setShowModal(true) }
   const openEdit = (emp) => {
-    setForm({ ...EMPTY, ...emp, salary: emp.salary?.toString() || '', leave_balance: emp.leave_balance?.toString() || '12' })
+    setForm({ ...EMPTY, ...emp, salary: emp.salary?.toString() || '', leave_balance: emp.leave_balance?.toString() || '12', role: emp.role || 'employee' })
     setEditEmp(emp)
     setShowModal(true)
   }
@@ -74,7 +74,9 @@ export default function AdminEmployees() {
       await api.delete(`/employees/${id}`)
       toast.success('Employee deleted')
       fetch()
-    } catch { toast.error('Failed to delete') }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to delete')
+    }
   }
 
   const statusBadge = (s) => {
@@ -126,7 +128,14 @@ export default function AdminEmployees() {
                         <span className="text-xs font-semibold text-brand-400">{emp.full_name?.charAt(0)}</span>
                       </div>
                       <div>
-                        <p className="font-medium text-white">{emp.full_name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-white">{emp.full_name}</p>
+                          {emp.role === 'admin' && (
+                            <span className="text-[10px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-1.5 py-0.5 rounded-md font-medium uppercase tracking-wider">
+                              Admin
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-500">{emp.email}</p>
                       </div>
                     </div>
@@ -196,6 +205,13 @@ export default function AdminEmployees() {
                   <option value="inactive">Inactive</option>
                   <option value="on_leave">On Leave</option>
                   <option value="terminated">Terminated</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Role</label>
+                <select className="input" value={form.role || 'employee'} onChange={set('role')} required>
+                  <option value="employee">Employee</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
               <div className="sm:col-span-2">

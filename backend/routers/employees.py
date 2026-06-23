@@ -9,6 +9,8 @@ router = APIRouter(prefix="/api/employees", tags=["Employees"])
 
 def serialize_employee(emp):
     emp["_id"] = str(emp["_id"])
+    if "role" not in emp:
+        emp["role"] = "employee"
     return emp
 
 @router.get("/")
@@ -106,11 +108,12 @@ async def create_employee(employee_data: EmployeeCreate, current_user=Depends(ge
         raise HTTPException(status_code=400, detail="Email is already used by another user account")
 
     # Create user first
+    user_role = employee_data.role.value if hasattr(employee_data.role, "value") else employee_data.role
     user_doc = {
         "email": employee_data.email,
         "password": get_password_hash(employee_data.password),
         "full_name": employee_data.full_name,
-        "role": "employee",
+        "role": user_role,
         "organization_id": current_user["organization_id"],
         "created_at": get_current_time(),
         "is_active": True,
@@ -121,6 +124,7 @@ async def create_employee(employee_data: EmployeeCreate, current_user=Depends(ge
     emp_doc = employee_data.model_dump()
     if "password" in emp_doc:
         del emp_doc["password"]
+    emp_doc["role"] = user_role
     emp_doc["organization_id"] = current_user["organization_id"]
     emp_doc["created_at"] = get_current_time()
     emp_doc["created_by"] = current_user["_id"]
@@ -161,6 +165,24 @@ async def update_employee(employee_id: str, update_data: EmployeeUpdate, current
         if existing_emp:
             raise HTTPException(status_code=400, detail="Employee ID already exists in this organization")
 
+    # If role is being changed from "admin" to "employee", check if this is the last admin
+    if "role" in update_dict:
+        new_role = update_dict["role"].value if hasattr(update_dict["role"], "value") else update_dict["role"]
+        update_dict["role"] = new_role
+        
+        current_emp_role = emp.get("role", "employee")
+        if current_emp_role == "admin" and new_role == "employee":
+            # Count other admins in the same organization in users collection
+            admin_count = await db.users.count_documents({
+                "organization_id": current_user["organization_id"],
+                "role": "admin"
+            })
+            if admin_count <= 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot demote the only admin in the organization. At least one admin is required."
+                )
+
     result = await db.employees.update_one({"_id": emp["_id"]}, {"$set": update_dict})
     
     if result.matched_count == 0:
@@ -172,6 +194,8 @@ async def update_employee(employee_id: str, update_data: EmployeeUpdate, current
         user_updates["full_name"] = update_dict["full_name"]
     if "email" in update_dict:
         user_updates["email"] = update_dict["email"]
+    if "role" in update_dict:
+        user_updates["role"] = update_dict["role"]
     
     if user_updates and old_email:
         await db.users.update_one({"email": old_email}, {"$set": user_updates})
@@ -189,6 +213,19 @@ async def delete_employee(employee_id: str, current_user=Depends(get_current_adm
         raise HTTPException(status_code=404, detail="Employee not found")
 
     email = emp.get("email")
+
+    # If the employee is also an admin, check if this is the last admin
+    user_to_delete = await db.users.find_one({"email": email}) if email else None
+    if user_to_delete and user_to_delete.get("role") == "admin":
+        admin_count = await db.users.count_documents({
+            "organization_id": current_user["organization_id"],
+            "role": "admin"
+        })
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete the only admin in the organization. At least one admin is required."
+            )
 
     result = await db.employees.delete_one({"_id": emp["_id"]})
     

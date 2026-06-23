@@ -68,6 +68,7 @@ class Token(BaseModel):
     user_id: str
     full_name: str
     organization_id: Optional[str] = None
+    organization_name: Optional[str] = None
 
 class TokenData(BaseModel):
     email: Optional[str] = None
@@ -118,6 +119,7 @@ class EmployeeCreate(BaseModel):
     date_of_joining: str
     salary: float
     employment_status: EmploymentStatus = EmploymentStatus.active
+    role: UserRole = UserRole.employee
     date_of_birth: Optional[str] = None
     gender: Optional[str] = None
     address: Optional[str] = None
@@ -134,6 +136,7 @@ class EmployeeUpdate(BaseModel):
     designation: Optional[str] = None
     salary: Optional[float] = None
     employment_status: Optional[EmploymentStatus] = None
+    role: Optional[UserRole] = None
     date_of_birth: Optional[str] = None
     gender: Optional[str] = None
     address: Optional[str] = None
@@ -233,4 +236,9 @@ class TaskSimilarityResponse(BaseModel):
     title: str
     description: Optional[str] = None
     similarity: float
+    created_by: Optional[str] = None
+    assigned_to: List[str] = []
+    due_date: Optional[str] = None
+    priority: Optional[str] = None
+    project: Optional[str] = None
 

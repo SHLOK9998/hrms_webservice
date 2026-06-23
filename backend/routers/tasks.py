@@ -197,28 +197,78 @@ async def check_task_similarity(data: TaskCheckSimilarity, current_user=Depends(
     text = f"{data.title}\n{data.description or ''}".strip()
     new_vector = await get_embedding(text)
     
-    # Fetch all tasks from db that have embeddings and belong to same organization
-    tasks = await db.tasks.find({
-        "embedding": {"$exists": True},
-        "organization_id": current_user["organization_id"]
-    }).to_list(1000)
-    
-    similarities = []
-    for task in tasks:
-        sim = cosine_similarity(new_vector, task.get("embedding", []))
-        # Return tasks with a similarity > 0.5 (or any similarity) up to top 3
-        # In a real similarity check, we return top 3 above a sensible threshold.
-        # Cosine similarity is between -1 and 1 (or 0 and 1 for positive space).
-        if sim > 0.5:
-            similarities.append({
-                "id": str(task["_id"]),
-                "title": task["title"],
-                "description": task.get("description", ""),
-                "similarity": sim
-            })
-    
-    similarities.sort(key=lambda x: x["similarity"], reverse=True)
-    return similarities[:3]
+    # Try using native MongoDB Atlas Vector Search first
+    try:
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "tasks_vector_index",
+                    "path": "embedding",
+                    "queryVector": new_vector,
+                    "numCandidates": 100,
+                    "limit": 3,
+                    "filter": {
+                        "organization_id": current_user["organization_id"]
+                    }
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "description": 1,
+                    "created_by": 1,
+                    "assigned_to": 1,
+                    "due_date": 1,
+                    "priority": 1,
+                    "project": 1,
+                    "similarity": {"$meta": "vectorSearchScore"}
+                }
+            }
+        ]
+        results = await db.tasks.aggregate(pipeline).to_list(3)
+        similarities = []
+        for task in results:
+            sim = task.get("similarity", 0.0)
+            if sim >= 0.85:
+                similarities.append({
+                    "id": str(task["_id"]),
+                    "title": task["title"],
+                    "description": task.get("description", ""),
+                    "similarity": sim,
+                    "created_by": task.get("created_by"),
+                    "assigned_to": task.get("assigned_to", []),
+                    "due_date": task.get("due_date"),
+                    "priority": task.get("priority"),
+                    "project": task.get("project")
+                })
+        return similarities
+    except Exception as e:
+        print(f"[Atlas Vector Search] Native search failed/not configured. Falling back to in-memory cosine similarity. Error: {e}")
+        # Fallback to in-memory cosine similarity search
+        tasks = await db.tasks.find({
+            "embedding": {"$exists": True},
+            "organization_id": current_user["organization_id"]
+        }).to_list(1000)
+        
+        similarities = []
+        for task in tasks:
+            sim = cosine_similarity(new_vector, task.get("embedding", []))
+            if sim >= 0.85:
+                similarities.append({
+                    "id": str(task["_id"]),
+                    "title": task["title"],
+                    "description": task.get("description", ""),
+                    "similarity": sim,
+                    "created_by": task.get("created_by"),
+                    "assigned_to": task.get("assigned_to", []),
+                    "due_date": task.get("due_date"),
+                    "priority": task.get("priority"),
+                    "project": task.get("project")
+                })
+        
+        similarities.sort(key=lambda x: x["similarity"], reverse=True)
+        return similarities[:3]
 
 
 @router.post("/")

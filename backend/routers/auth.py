@@ -36,10 +36,21 @@ async def login(user_data: UserLogin):
     if org_id and not isinstance(org_id, str):
         org_id = str(org_id)
 
+    org_name = None
+    if org_id:
+        from bson import ObjectId
+        try:
+            org = await db.organizations.find_one({"_id": ObjectId(org_id)})
+            if org:
+                org_name = org.get("name")
+        except Exception:
+            pass
+
     token = create_access_token({
         "sub": user["email"],
         "role": user["role"],
-        "organization_id": org_id
+        "organization_id": org_id,
+        "organization_name": org_name
     })
     return {
         "access_token": token,
@@ -48,15 +59,29 @@ async def login(user_data: UserLogin):
         "user_id": str(user["_id"]),
         "full_name": user["full_name"],
         "organization_id": org_id,
+        "organization_name": org_name,
     }
 
 @router.get("/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
+    db = get_database()
+    org_id = current_user.get("organization_id")
+    org_name = None
+    if org_id:
+        from bson import ObjectId
+        try:
+            org = await db.organizations.find_one({"_id": ObjectId(org_id)})
+            if org:
+                org_name = org.get("name")
+        except Exception:
+            pass
     return {
         "id": current_user["_id"],
         "email": current_user["email"],
         "full_name": current_user["full_name"],
         "role": current_user["role"],
+        "organization_id": org_id,
+        "organization_name": org_name,
     }
 
 @router.post("/change-password")

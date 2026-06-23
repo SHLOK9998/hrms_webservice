@@ -30,7 +30,9 @@ export default function EmployeeLayout() {
                 <Users2 className="w-5 h-5 text-emerald-400" />
               </div>
               <div>
-                <p className="font-bold text-white text-sm">HRMS</p>
+                <p className="font-bold text-white text-sm truncate max-w-[140px]" title={user?.organization_name || "HRMS"}>
+                  {user?.organization_name || "HRMS"}
+                </p>
                 <p className="text-xs text-slate-500">Employee Portal</p>
               </div>
             </div>

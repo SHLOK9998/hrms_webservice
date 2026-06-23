@@ -34,7 +34,9 @@ export default function AdminLayout() {
                 <Users2 className="w-5 h-5 text-brand-400" />
               </div>
               <div>
-                <p className="font-bold text-white text-sm">HRMS</p>
+                <p className="font-bold text-white text-sm truncate max-w-[140px]" title={user?.organization_name || "HRMS"}>
+                  {user?.organization_name || "HRMS"}
+                </p>
                 <p className="text-xs text-slate-500">Admin Panel</p>
               </div>
             </div>

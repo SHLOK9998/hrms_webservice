@@ -359,18 +359,45 @@ export default function EmployeeTasks() {
               </div>
             </div>
 
-            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
               {similarTasks.map((t) => (
-                <div key={t.id} className="p-4 bg-slate-800/60 rounded-xl border border-slate-700/50 space-y-2 hover:border-slate-600 transition-colors">
+                <div key={t.id} className="p-4 bg-slate-800/60 rounded-xl border border-slate-700/50 space-y-3 hover:border-slate-600 transition-colors">
                   <div className="flex justify-between items-start gap-2">
-                    <span className="text-sm font-semibold text-white truncate">{t.title}</span>
+                    <span className="text-sm font-semibold text-white">{t.title}</span>
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
                       {(t.similarity * 100).toFixed(0)}% Match
                     </span>
                   </div>
                   {t.description && (
-                    <p className="text-xs text-slate-400 line-clamp-2">{t.description}</p>
+                    <p className="text-xs text-slate-300 bg-slate-900/40 p-2 rounded-lg border border-slate-800/50 whitespace-pre-wrap">{t.description}</p>
                   )}
+                  <div className="grid grid-cols-2 gap-2 pt-2 text-[11px] text-slate-400 border-t border-slate-700/30">
+                    {t.project && (
+                      <div>
+                        <span className="text-slate-500">Project:</span> <span className="text-brand-400 font-medium">{t.project}</span>
+                      </div>
+                    )}
+                    {t.priority && (
+                      <div>
+                        <span className="text-slate-500">Priority:</span> <span className="text-slate-300 font-medium capitalize">{t.priority}</span>
+                      </div>
+                    )}
+                    {t.due_date && (
+                      <div>
+                        <span className="text-slate-500">Due Date:</span> <span className="text-slate-300 font-medium">{t.due_date}</span>
+                      </div>
+                    )}
+                    {t.created_by && (
+                      <div>
+                        <span className="text-slate-500">Created By:</span> <span className="text-slate-300 font-medium">{t.created_by}</span>
+                      </div>
+                    )}
+                    {t.assigned_to && t.assigned_to.length > 0 && (
+                      <div className="col-span-2">
+                        <span className="text-slate-500">Assignees:</span> <span className="text-slate-300 font-medium">{t.assigned_to.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

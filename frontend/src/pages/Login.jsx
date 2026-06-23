@@ -53,12 +53,7 @@ export default function Login() {
               />
             </div>
             <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="label mb-0">Password</label>
-                <Link to="/forgot-password" className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors">
-                  Forgot Password?
-                </Link>
-              </div>
+              <label className="label mb-1.5">Password</label>
               <div className="relative">
                 <input
                   type={showPass ? 'text' : 'password'}
@@ -73,6 +68,11 @@ export default function Login() {
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              <div className="flex justify-end mt-2">
+                <Link to="/forgot-password" className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors">
+                  Forgot Password?
+                </Link>
+              </div>
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full justify-center mt-2 py-3">
               {loading ? (
@@ -83,15 +83,6 @@ export default function Login() {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-        </div>
-
-        {/* Demo credentials */}
-        <div className="mt-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Demo Credentials</p>
-          <div className="space-y-1 text-xs text-slate-500 font-mono">
-            <p>Admin: admin@hrms.com / admin123</p>
-            <p>Employee: emp@hrms.com / emp123</p>
-          </div>
         </div>
       </div>
     </div>

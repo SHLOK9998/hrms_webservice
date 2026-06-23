@@ -81,6 +81,7 @@ async def create_organization(data: OrganizationWithAdminCreate, current_user=De
         "salary": 0.0,
         "employment_status": "active",
         "leave_balance": 12.0,
+        "role": "admin",
         "organization_id": org_id,
         "created_at": get_current_time(),
         "created_by": str(user_result.inserted_id)
