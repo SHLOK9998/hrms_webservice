@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Clock, CalendarCheck, DollarSign, Bell, LogIn, LogOut,
   CheckSquare, CalendarDays, TrendingUp, AlertCircle
@@ -19,6 +20,7 @@ const STATUS_COLORS = {
 
 export default function EmployeeDashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [attendance, setAttendance] = useState({ checked_in: false, checked_out: false, record: null })
   const [leaves, setLeaves] = useState([])
   const [avgHours, setAvgHours] = useState('0.00')
@@ -162,12 +164,16 @@ export default function EmployeeDashboard() {
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Leave Balance', value: `${getLeaveBalance()} `, icon: CalendarCheck, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-          { label: 'Active Tasks', value: activeTasks, icon: CheckSquare, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-          { label: 'Overdue Tasks', value: overdueTasks, icon: AlertCircle, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
-          { label: 'Avg Work Hours', value: `${avgHours} `, icon: Clock, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+          { label: 'Leave Balance', value: `${getLeaveBalance()} `, icon: CalendarCheck, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', path: '/employee/leaves' },
+          { label: 'Active Tasks', value: activeTasks, icon: CheckSquare, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', path: '/employee/tasks' },
+          { label: 'Overdue Tasks', value: overdueTasks, icon: AlertCircle, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', path: '/employee/tasks' },
+          { label: 'Avg Work Hours', value: `${avgHours} `, icon: Clock, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', path: null },
         ].map((card, i) => (
-          <div key={i} className={`stat-card border ${card.border}`}>
+          <div
+            key={i}
+            onClick={() => card.path && navigate(card.path)}
+            className={`stat-card border ${card.border} ${card.path ? 'cursor-pointer hover:border-slate-500 hover:bg-slate-800/30 transition-all duration-200' : ''}`}
+          >
             <div className={`w-11 h-11 rounded-xl ${card.bg} border ${card.border} flex items-center justify-center flex-shrink-0`}>
               <card.icon className={`w-5 h-5 ${card.color}`} />
             </div>
@@ -183,9 +189,14 @@ export default function EmployeeDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* My Tasks */}
         <div className="card lg:col-span-2">
-          <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-            <CheckSquare className="w-4 h-4 text-blue-400" /> My Tasks
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 onClick={() => navigate('/employee/tasks')} className="text-base font-semibold text-white flex items-center gap-2 cursor-pointer hover:text-blue-400 transition-colors">
+              <CheckSquare className="w-4 h-4 text-blue-400" /> My Tasks
+            </h3>
+            <button onClick={() => navigate('/employee/tasks')} className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors">
+              View All
+            </button>
+          </div>
           {tasks.length === 0 ? (
             <p className="text-slate-500 text-sm">No tasks assigned to you.</p>
           ) : (
@@ -193,7 +204,7 @@ export default function EmployeeDashboard() {
               {tasks.map(t => {
                 const overdue = t.due_date && t.status !== 'done' && parseISO(t.due_date) < today
                 return (
-                  <div key={t._id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-xl border border-slate-700/40 hover:border-slate-600 transition-colors">
+                  <div key={t._id} onClick={() => navigate('/employee/tasks')} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-xl border border-slate-700/40 hover:border-slate-500 cursor-pointer transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${t.status === 'done' ? 'bg-emerald-400' :
                           t.status === 'in_progress' ? 'bg-blue-400' :
@@ -220,15 +231,20 @@ export default function EmployeeDashboard() {
         <div className="space-y-5">
           {/* Upcoming Holidays */}
           <div className="card">
-            <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-              <CalendarDays className="w-4 h-4 text-emerald-400" /> Upcoming Holidays
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 onClick={() => navigate('/employee/holidays')} className="text-sm font-semibold text-white flex items-center gap-2 cursor-pointer hover:text-emerald-400 transition-colors">
+                <CalendarDays className="w-4 h-4 text-emerald-400" /> Upcoming Holidays
+              </h3>
+              <button onClick={() => navigate('/employee/holidays')} className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors">
+                View All
+              </button>
+            </div>
             {upcomingHolidays.length === 0 ? (
               <p className="text-slate-500 text-xs">No upcoming holidays.</p>
             ) : (
               <div className="space-y-2">
                 {upcomingHolidays.map((h, i) => (
-                  <div key={i} className="flex items-center gap-3">
+                  <div key={i} onClick={() => navigate('/employee/holidays')} className="flex items-center gap-3 p-1.5 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-colors">
                     <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
                       <span className="text-xs font-bold text-emerald-400">{format(parseISO(h.date), 'dd')}</span>
                     </div>

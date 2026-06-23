@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Users, CalendarCheck, Clock, DollarSign, TrendingUp, UserCheck, CheckSquare, CalendarDays, AlertCircle } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import api from '../../utils/api'
@@ -9,6 +10,7 @@ const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444']
 
 export default function AdminDashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [stats, setStats] = useState({ total: 0, active: 0, on_leave: 0, departments: 0 })
   const [leaveStats, setLeaveStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 })
   const [taskStats, setTaskStats] = useState({ total: 0, overdue: 0, by_status: [] })
@@ -47,10 +49,10 @@ export default function AdminDashboard() {
   ]
 
   const statCards = [
-    { label: 'Total Employees', value: stats.total, icon: Users, color: 'text-brand-400', bg: 'bg-brand-500/10', border: 'border-brand-500/20' },
-    { label: 'Active Today', value: stats.checked_in_today || 0, icon: UserCheck, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
-    { label: 'Pending Leaves', value: leaveStats.pending, icon: CalendarCheck, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-    { label: 'Tasks Overdue', value: taskStats.overdue || 0, icon: CheckSquare, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+    { label: 'Total Employees', value: stats.total, icon: Users, color: 'text-brand-400', bg: 'bg-brand-500/10', border: 'border-brand-500/20', path: '/admin/employees' },
+    { label: 'Active Today', value: stats.checked_in_today || 0, icon: UserCheck, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', path: '/admin/attendance' },
+    { label: 'Pending Leaves', value: leaveStats.pending, icon: CalendarCheck, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', path: '/admin/leaves' },
+    { label: 'Tasks Overdue', value: taskStats.overdue || 0, icon: CheckSquare, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', path: '/admin/tasks' },
   ]
 
   const priorityColors = { high: 'text-red-400', medium: 'text-amber-400', low: 'text-slate-400', urgent: 'text-red-500' }
@@ -73,7 +75,12 @@ export default function AdminDashboard() {
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((card, i) => (
-          <div key={i} className={`stat-card border ${card.border}`} style={{ animationDelay: `${i * 80}ms` }}>
+          <div
+            key={i}
+            onClick={() => card.path && navigate(card.path)}
+            className={`stat-card border ${card.border} ${card.path ? 'cursor-pointer hover:border-slate-500 hover:bg-slate-800/30 transition-all duration-200' : ''}`}
+            style={{ animationDelay: `${i * 80}ms` }}
+          >
             <div className={`w-12 h-12 rounded-xl ${card.bg} border ${card.border} flex items-center justify-center flex-shrink-0`}>
               <card.icon className={`w-6 h-6 ${card.color}`} />
             </div>
@@ -122,13 +129,18 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Announcements */}
         <div className="card">
-          <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-brand-400" /> Latest Announcements
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 onClick={() => navigate('/admin/announcements')} className="text-base font-semibold text-white flex items-center gap-2 cursor-pointer hover:text-brand-400 transition-colors">
+              <AlertCircle className="w-4 h-4 text-brand-400" /> Latest Announcements
+            </h3>
+            <button onClick={() => navigate('/admin/announcements')} className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors">
+              Manage
+            </button>
+          </div>
           <div className="space-y-3">
             {announcements.length === 0 && <p className="text-slate-500 text-sm">No announcements yet.</p>}
             {announcements.map((a, i) => (
-              <div key={i} className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/50">
+              <div key={i} onClick={() => navigate('/admin/announcements')} className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/50 hover:border-slate-500 cursor-pointer transition-colors">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-medium text-white leading-snug">{a.title}</p>
                   <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full ${a.priority === 'high' ? 'bg-red-500/20 text-red-400' : a.priority === 'urgent' ? 'bg-red-600/30 text-red-300' : 'bg-slate-700 text-slate-400'}`}>
@@ -143,13 +155,18 @@ export default function AdminDashboard() {
 
         {/* Upcoming Holidays */}
         <div className="card">
-          <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-            <CalendarDays className="w-4 h-4 text-emerald-400" /> Upcoming Holidays
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 onClick={() => navigate('/admin/holidays')} className="text-base font-semibold text-white flex items-center gap-2 cursor-pointer hover:text-emerald-400 transition-colors">
+              <CalendarDays className="w-4 h-4 text-emerald-400" /> Upcoming Holidays
+            </h3>
+            <button onClick={() => navigate('/admin/holidays')} className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors">
+              View All
+            </button>
+          </div>
           <div className="space-y-3">
             {upcomingHolidays.length === 0 && <p className="text-slate-500 text-sm">No upcoming holidays.</p>}
             {upcomingHolidays.map((h, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 bg-slate-800/60 rounded-xl border border-slate-700/50">
+              <div key={i} onClick={() => navigate('/admin/holidays')} className="flex items-center gap-3 p-3 bg-slate-800/60 rounded-xl border border-slate-700/50 hover:border-slate-500 cursor-pointer transition-colors">
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex flex-col items-center justify-center flex-shrink-0">
                   <span className="text-xs font-bold text-emerald-400">{format(parseISO(h.date), 'dd')}</span>
                   <span className="text-xs text-emerald-600">{format(parseISO(h.date), 'MMM')}</span>
@@ -165,9 +182,14 @@ export default function AdminDashboard() {
 
         {/* Task Summary */}
         <div className="card">
-          <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-            <CheckSquare className="w-4 h-4 text-purple-400" /> Task Overview
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 onClick={() => navigate('/admin/tasks')} className="text-base font-semibold text-white flex items-center gap-2 cursor-pointer hover:text-purple-400 transition-colors">
+              <CheckSquare className="w-4 h-4 text-purple-400" /> Task Overview
+            </h3>
+            <button onClick={() => navigate('/admin/tasks')} className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors">
+              Manage
+            </button>
+          </div>
           <div className="space-y-2">
             {[
               { label: 'Total Tasks', value: taskStats.total, color: 'text-white' },
@@ -178,7 +200,7 @@ export default function AdminDashboard() {
                 color: s._id === 'done' ? 'text-emerald-400' : s._id === 'in_progress' ? 'text-blue-400' : 'text-slate-400',
               }))
             ].map((item, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-slate-700/40 last:border-0">
+              <div key={i} onClick={() => navigate('/admin/tasks')} className="flex items-center justify-between py-2 border-b border-slate-700/40 last:border-0 hover:border-slate-500 cursor-pointer transition-colors px-1">
                 <span className="text-sm text-slate-400 capitalize">{item.label}</span>
                 <span className={`text-sm font-bold ${item.color}`}>{item.value}</span>
               </div>
