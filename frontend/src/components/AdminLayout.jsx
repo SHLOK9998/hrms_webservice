@@ -11,6 +11,7 @@ const navItems = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/attendance', label: 'Attendance', icon: Clock },
   { to: '/admin/tasks', label: 'Task Tracker', icon: CheckSquare },
+  { to: '/admin/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/admin/leaves', label: 'Leave Management', icon: CalendarCheck },
   { to: '/admin/payroll', label: 'Payroll', icon: DollarSign },
   { to: '/admin/employees', label: 'Employees', icon: Users },

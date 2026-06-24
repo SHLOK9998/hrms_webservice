@@ -4,9 +4,14 @@ import { Users, CalendarCheck, Clock, DollarSign, TrendingUp, UserCheck, CheckSq
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import api from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
-import { format, isAfter, parseISO } from 'date-fns'
+import { format, isAfter } from 'date-fns'
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444']
+
+const getISTDate = () => {
+  const utc = new Date().getTime() + (new Date().getTimezoneOffset() * 60000)
+  return new Date(utc + (3600000 * 5.5))
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth()
@@ -68,7 +73,12 @@ export default function AdminDashboard() {
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">Good morning, {user?.full_name?.split(' ')[0]} 👋</h1>
+        <h1 className="text-2xl font-bold text-white">{(() => {
+          const hour = getISTDate().getHours();
+          if (hour < 12) return 'Good morning';
+          if (hour < 17) return 'Good afternoon';
+          return 'Good evening';
+        })()}, {user?.full_name?.split(' ')[0]} 👋</h1>
         <p className="text-slate-400 mt-1">Here's what's happening with {user?.organization_name || "your organization"} today.</p>
       </div>
 

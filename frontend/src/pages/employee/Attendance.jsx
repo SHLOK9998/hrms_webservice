@@ -52,7 +52,7 @@ export default function EmployeeAttendance() {
 
       {/* Today's status */}
       <div className="card border-brand-500/20">
-        <h3 className="font-semibold text-white mb-4">Today — {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
+        <h3 className="font-semibold text-white mb-4">Today — {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' })}</h3>
         <div className="flex items-center gap-4 flex-wrap">
           {!todayAtt ? (
             <div className="flex items-center gap-3">
@@ -115,7 +115,7 @@ export default function EmployeeAttendance() {
                 return (
                   <tr key={i} className="table-row">
                     <td className="table-cell font-mono">{r.date}</td>
-                    <td className="table-cell text-slate-400">{d.toLocaleDateString('en', { weekday: 'short' })}</td>
+                    <td className="table-cell text-slate-400">{d.toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</td>
                     <td className="table-cell font-mono text-emerald-400">{r.check_in || '—'}</td>
                     <td className="table-cell font-mono text-amber-400">{r.check_out || '—'}</td>
                     <td className="table-cell">{badge(r.status)}</td>

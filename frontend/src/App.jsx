@@ -17,6 +17,7 @@ import AdminPayroll from './pages/admin/Payroll'
 import AdminAnnouncements from './pages/admin/Announcements'
 import AdminHolidays from './pages/admin/Holidays'
 import AdminTasks from './pages/admin/Tasks'
+import AdminCalendar from './pages/admin/Calendar'
 
 // Employee pages
 import EmployeeDashboard from './pages/employee/Dashboard'
@@ -26,6 +27,7 @@ import EmployeeAttendance from './pages/employee/Attendance'
 import EmployeePayroll from './pages/employee/Payroll'
 import EmployeeHolidays from './pages/employee/Holidays'
 import EmployeeTasks from './pages/employee/Tasks'
+import EmployeeCalendar from './pages/employee/Calendar'
 
 function ProtectedRoute({ children, role }) {
   const { user, loading, viewMode } = useAuth()
@@ -74,6 +76,7 @@ function AppRoutes() {
         <Route path="leaves" element={<AdminLeaves />} />
         <Route path="attendance" element={<AdminAttendance />} />
         <Route path="payroll" element={<AdminPayroll />} />
+        <Route path="calendar" element={<AdminCalendar />} />
         <Route path="holidays" element={<AdminHolidays />} />
         <Route path="tasks" element={<AdminTasks />} />
         <Route path="announcements" element={<AdminAnnouncements />} />
@@ -86,6 +89,7 @@ function AppRoutes() {
         <Route path="leaves" element={<EmployeeLeaves />} />
         <Route path="attendance" element={<EmployeeAttendance />} />
         <Route path="payroll" element={<EmployeePayroll />} />
+        <Route path="calendar" element={<EmployeeCalendar />} />
         <Route path="holidays" element={<EmployeeHolidays />} />
         <Route path="tasks" element={<EmployeeTasks />} />
       </Route>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { CalendarDays, Plus, Trash2, X } from 'lucide-react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
-import { format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 
 const HOLIDAY_TYPES = ['national', 'regional', 'optional', 'company']
 const TYPE_COLORS = {
@@ -12,13 +12,24 @@ const TYPE_COLORS = {
   company: 'badge-gray',
 }
 
+const getISTDate = () => {
+  const utc = new Date().getTime() + (new Date().getTimezoneOffset() * 60000)
+  return new Date(utc + (3600000 * 5.5))
+}
+
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return new Date()
+  const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 export default function AdminHolidays() {
   const [holidays, setHolidays] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ name: '', date: '', holiday_type: 'national', description: '' })
   const [saving, setSaving] = useState(false)
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear())
+  const [filterYear, setFilterYear] = useState(getISTDate().getFullYear())
 
   const fetchHolidays = async () => {
     try {
@@ -56,7 +67,7 @@ export default function AdminHolidays() {
 
   // Group by month
   const grouped = holidays.reduce((acc, h) => {
-    const month = format(parseISO(h.date), 'MMMM yyyy')
+    const month = format(parseLocalDate(h.date), 'MMMM yyyy')
     if (!acc[month]) acc[month] = []
     acc[month].push(h)
     return acc
@@ -122,8 +133,8 @@ export default function AdminHolidays() {
                   <div key={h._id} className="flex items-center justify-between px-5 py-4 hover:bg-slate-700/20 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/20 flex flex-col items-center justify-center flex-shrink-0">
-                        <span className="text-base font-bold text-brand-400">{format(parseISO(h.date), 'dd')}</span>
-                        <span className="text-xs text-brand-600">{format(parseISO(h.date), 'EEE')}</span>
+                        <span className="text-base font-bold text-brand-400">{format(parseLocalDate(h.date), 'dd')}</span>
+                        <span className="text-xs text-brand-600">{format(parseLocalDate(h.date), 'EEE')}</span>
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-white">{h.name}</p>

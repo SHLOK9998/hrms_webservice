@@ -27,6 +27,22 @@ async def get_my_leaves(current_user=Depends(get_current_tenant_user)):
     }).sort("created_at", -1).to_list(100)
     return [serialize(l) for l in leaves]
 
+@router.get("/calendar/approved")
+async def get_approved_leaves_for_calendar(current_user=Depends(get_current_tenant_user)):
+    db = get_database()
+    records = await db.leaves.find({
+        "status": "approved",
+        "organization_id": current_user["organization_id"],
+        "leave_type": {"$in": ["leave", "wfh"]}
+    }, {
+        "_id": 1,
+        "employee_name": 1,
+        "leave_type": 1,
+        "start_date": 1,
+        "end_date": 1
+    }).to_list(1000)
+    return [serialize(r) for r in records]
+
 @router.get("/pending")
 async def get_pending_leaves(current_user=Depends(get_current_admin)):
     db = get_database()

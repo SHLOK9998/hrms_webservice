@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
-import { format, parseISO, isAfter, isBefore, startOfDay } from 'date-fns'
+import { format, isAfter, isBefore, startOfDay } from 'date-fns'
 
 const TYPE_COLORS = {
   national: 'badge-blue',
@@ -22,7 +22,19 @@ export default function EmployeeHolidays() {
   const [holidays, setHolidays] = useState([])
   const [loading, setLoading] = useState(true)
   const [year, setYear] = useState(new Date().getFullYear())
-  const today = startOfDay(new Date())
+
+  const getISTDate = () => {
+    const utc = new Date().getTime() + (new Date().getTimezoneOffset() * 60000)
+    return new Date(utc + (3600000 * 5.5))
+  }
+
+  const parseLocalDate = (dateStr) => {
+    if (!dateStr) return new Date()
+    const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
+    return new Date(year, month - 1, day)
+  }
+
+  const today = startOfDay(getISTDate())
 
   useEffect(() => {
     const fetch = async () => {
@@ -36,8 +48,8 @@ export default function EmployeeHolidays() {
     fetch()
   }, [year])
 
-  const upcoming = holidays.filter(h => !isBefore(parseISO(h.date), today))
-  const past = holidays.filter(h => isBefore(parseISO(h.date), today))
+  const upcoming = holidays.filter(h => !isBefore(parseLocalDate(h.date), today))
+  const past = holidays.filter(h => isBefore(parseLocalDate(h.date), today))
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -89,12 +101,12 @@ export default function EmployeeHolidays() {
             {upcoming.map(h => (
               <div key={h._id} className="card !p-4 flex items-center gap-4 hover:border-slate-600 transition-all">
                 <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0 border ${TYPE_BG[h.holiday_type]}`}>
-                  <span className="text-lg font-bold text-white">{format(parseISO(h.date), 'dd')}</span>
-                  <span className="text-xs text-slate-400">{format(parseISO(h.date), 'MMM')}</span>
+                  <span className="text-lg font-bold text-white">{format(parseLocalDate(h.date), 'dd')}</span>
+                  <span className="text-xs text-slate-400">{format(parseLocalDate(h.date), 'MMM')}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white">{h.name}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{format(parseISO(h.date), 'EEEE, MMMM d yyyy')}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{format(parseLocalDate(h.date), 'EEEE, MMMM d yyyy')}</p>
                   {h.description && <p className="text-xs text-slate-500 mt-0.5">{h.description}</p>}
                 </div>
                 <span className={`flex-shrink-0 ${TYPE_COLORS[h.holiday_type] || 'badge-gray'}`}>{h.holiday_type}</span>
@@ -109,12 +121,12 @@ export default function EmployeeHolidays() {
             {[...past].reverse().map(h => (
               <div key={h._id} className="card !p-4 flex items-center gap-4 opacity-60 hover:opacity-80 transition-all">
                 <div className="w-14 h-14 rounded-xl bg-slate-700/40 border border-slate-700 flex flex-col items-center justify-center flex-shrink-0">
-                  <span className="text-lg font-bold text-slate-400">{format(parseISO(h.date), 'dd')}</span>
-                  <span className="text-xs text-slate-600">{format(parseISO(h.date), 'MMM')}</span>
+                  <span className="text-lg font-bold text-slate-400">{format(parseLocalDate(h.date), 'dd')}</span>
+                  <span className="text-xs text-slate-650">{format(parseLocalDate(h.date), 'MMM')}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-300">{h.name}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{format(parseISO(h.date), 'EEEE, MMMM d yyyy')}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{format(parseLocalDate(h.date), 'EEEE, MMMM d yyyy')}</p>
                 </div>
                 <span className={`flex-shrink-0 ${TYPE_COLORS[h.holiday_type] || 'badge-gray'} opacity-60`}>{h.holiday_type}</span>
               </div>

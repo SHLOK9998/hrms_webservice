@@ -7,7 +7,7 @@ import {
 import api from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
-import { format, parseISO, differenceInDays, startOfDay } from 'date-fns'
+import { format, differenceInDays, startOfDay } from 'date-fns'
 
 const STATUS_COLORS = {
   todo: 'text-slate-400',
@@ -35,12 +35,23 @@ export default function EmployeeDashboard() {
   const [showAnnouncementsModal, setShowAnnouncementsModal] = useState(false)
   const [expandedAnnouncementId, setExpandedAnnouncementId] = useState(null)
   
-  const today = startOfDay(new Date())
+  const getISTDate = () => {
+    const utc = new Date().getTime() + (new Date().getTimezoneOffset() * 60000)
+    return new Date(utc + (3600000 * 5.5))
+  }
+
+  const parseLocalDate = (dateStr) => {
+    if (!dateStr) return new Date()
+    const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
+    return new Date(year, month - 1, day)
+  }
+
+  const today = startOfDay(getISTDate())
 
   const formatDate = (dateStr) => {
     if (!dateStr) return ''
     try {
-      return format(parseISO(dateStr), 'MMMM d, yyyy')
+      return format(parseLocalDate(dateStr), 'MMMM d, yyyy')
     } catch {
       return dateStr.split('T')[0]
     }
@@ -91,8 +102,8 @@ export default function EmployeeDashboard() {
           .filter(l => l.status === 'approved')
           .reduce((sum, l) => {
             try {
-              const start = parseISO(l.start_date)
-              const end = parseISO(l.end_date)
+              const start = parseLocalDate(l.start_date)
+              const end = parseLocalDate(l.end_date)
               return sum + differenceInDays(end, start) + 1
             } catch {
               return sum + 1
@@ -133,7 +144,7 @@ export default function EmployeeDashboard() {
   const activeTasks = tasks.filter(t => t.status !== 'done').length
   const overdueTasks = tasks.filter(t => {
     if (!t.due_date || t.status === 'done') return false
-    return parseISO(t.due_date) < today
+    return parseLocalDate(t.due_date) < today
   }).length
 
   if (loading) return (
@@ -147,7 +158,7 @@ export default function EmployeeDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Hello, {user?.full_name?.split(' ')[0]} 👋</h1>
-        <p className="text-slate-400 mt-1">{user?.organization_name ? `${user.organization_name} · ` : ''}{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
+        <p className="text-slate-400 mt-1">{user?.organization_name ? `${user.organization_name} · ` : ''}{format(getISTDate(), 'EEEE, MMMM d, yyyy')}</p>
       </div>
 
       {/* Attendance Card */}
@@ -229,7 +240,7 @@ export default function EmployeeDashboard() {
           ) : (
             <div className="space-y-2">
               {tasks.map(t => {
-                const overdue = t.due_date && t.status !== 'done' && parseISO(t.due_date) < today
+                const overdue = t.due_date && t.status !== 'done' && parseLocalDate(t.due_date) < today
                 return (
                   <div key={t._id} onClick={() => navigate('/employee/tasks')} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-xl border border-slate-700/40 hover:border-slate-500 cursor-pointer transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
@@ -244,7 +255,7 @@ export default function EmployeeDashboard() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                       {overdue && <span className="text-xs text-red-400">Overdue</span>}
-                      {t.due_date && !overdue && <span className="text-xs text-slate-500">{format(parseISO(t.due_date), 'dd MMM')}</span>}
+                      {t.due_date && !overdue && <span className="text-xs text-slate-500">{format(parseLocalDate(t.due_date), 'dd MMM')}</span>}
                       <span className={`text-xs font-medium capitalize ${STATUS_COLORS[t.status]}`}>{t.status.replace('_', ' ')}</span>
                     </div>
                   </div>
