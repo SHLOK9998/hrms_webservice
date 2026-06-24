@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Clock, CalendarCheck, DollarSign, Bell, LogIn, LogOut,
-  CheckSquare, CalendarDays, TrendingUp, AlertCircle
+  CheckSquare, CalendarDays, TrendingUp, AlertCircle, X, ChevronDown, ChevronUp
 } from 'lucide-react'
 import api from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
@@ -31,7 +31,34 @@ export default function EmployeeDashboard() {
   const [actionLoading, setActionLoading] = useState(false)
   const [profile, setProfile] = useState(null)
   const [approvedLeaveDays, setApprovedLeaveDays] = useState(0)
+  
+  const [showAnnouncementsModal, setShowAnnouncementsModal] = useState(false)
+  const [expandedAnnouncementId, setExpandedAnnouncementId] = useState(null)
+  
   const today = startOfDay(new Date())
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return ''
+    try {
+      return format(parseISO(dateStr), 'MMMM d, yyyy')
+    } catch {
+      return dateStr.split('T')[0]
+    }
+  }
+
+  const handleViewAnnouncement = (annId) => {
+    setExpandedAnnouncementId(annId)
+    setShowAnnouncementsModal(true)
+  }
+
+  const handleViewAllAnnouncements = () => {
+    setExpandedAnnouncementId(null)
+    setShowAnnouncementsModal(true)
+  }
+
+  const toggleAnnouncementExpand = (annId) => {
+    setExpandedAnnouncementId(prev => prev === annId ? null : annId)
+  }
 
   const fetchAll = async () => {
     try {
@@ -53,7 +80,7 @@ export default function EmployeeDashboard() {
       const computedAvg = activeRecords.length > 0 ? (totalHours / activeRecords.length).toFixed(2) : '0.00'
       setAvgHours(computedAvg)
 
-      setAnnouncements(annRes.data.slice(0, 3))
+      setAnnouncements(annRes.data || [])
       setTasks(taskRes.data.slice(0, 5))
       setUpcomingHolidays(holRes.data)
       if (profRes) setProfile(profRes.data)
@@ -260,17 +287,42 @@ export default function EmployeeDashboard() {
 
           {/* Announcements */}
           <div className="card">
-            <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-              <Bell className="w-4 h-4 text-brand-400" /> Announcements
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 
+                onClick={handleViewAllAnnouncements} 
+                className="text-sm font-semibold text-white flex items-center gap-2 cursor-pointer hover:text-brand-400 transition-colors"
+              >
+                <Bell className="w-4 h-4 text-brand-400" /> Announcements
+              </h3>
+              <button 
+                onClick={handleViewAllAnnouncements} 
+                className="text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors cursor-pointer"
+              >
+                View All
+              </button>
+            </div>
             {announcements.length === 0 ? (
               <p className="text-slate-500 text-xs">No announcements.</p>
             ) : (
               <div className="space-y-2">
-                {announcements.map((a, i) => (
-                  <div key={i} className="p-2.5 bg-slate-800/60 rounded-lg border border-slate-700/50">
-                    <p className="text-xs font-medium text-white leading-snug">{a.title}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{a.created_by}</p>
+                {announcements.slice(0, 3).map((a) => (
+                  <div
+                    key={a._id}
+                    onClick={() => handleViewAnnouncement(a._id)}
+                    className="p-2.5 bg-slate-800/60 hover:bg-slate-800/90 border border-slate-700/50 hover:border-brand-500/40 rounded-lg cursor-pointer transition-all duration-250 group"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium text-white leading-snug truncate group-hover:text-brand-400 transition-colors flex-1">{a.title}</p>
+                      {a.priority === 'high' && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-full flex-shrink-0">
+                          High
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center mt-2 pt-1 border-t border-slate-800/30">
+                      <p className="text-[10px] text-slate-500">By {a.created_by}</p>
+                      <p className="text-[10px] text-slate-500">{a.created_at ? format(parseISO(a.created_at), 'dd MMM') : ''}</p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -278,6 +330,84 @@ export default function EmployeeDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Announcements Modal */}
+      {showAnnouncementsModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-surface-900 border border-slate-700 rounded-2xl w-full max-w-xl flex flex-col max-h-[85vh] shadow-2xl animate-scale-up">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Bell className="w-5 h-5 text-brand-400" />
+                <h2 className="text-lg font-semibold text-white">Announcements</h2>
+              </div>
+              <button 
+                onClick={() => setShowAnnouncementsModal(false)} 
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-3 flex-1">
+              {announcements.length === 0 ? (
+                <div className="text-center py-10">
+                  <Bell className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                  <p className="text-slate-400 text-sm">No announcements yet</p>
+                </div>
+              ) : (
+                announcements.map((a) => {
+                  const isExpanded = expandedAnnouncementId === a._id
+                  return (
+                  <div 
+                    key={a._id} 
+                    className={`border rounded-xl transition-all duration-200 ${isExpanded ? 'border-slate-600 bg-slate-800/40' : 'border-slate-800 bg-slate-800/20 hover:border-slate-700/80'}`}
+                  >
+                    {/* Accordion Header */}
+                    <button
+                      onClick={() => toggleAnnouncementExpand(a._id)}
+                      className="w-full flex items-center justify-between p-4 text-left gap-3 focus:outline-none cursor-pointer"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-white text-sm truncate">{a.title}</h3>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${a.priority === 'high' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-700 text-slate-400'}`}>
+                            {a.priority}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          By {a.created_by} · {formatDate(a.created_at)}
+                        </p>
+                      </div>
+                      <div className="text-slate-400 flex-shrink-0">
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </div>
+                    </button>
+                    
+                    {/* Accordion Content */}
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-2 border-t border-slate-800/60">
+                        <p className="text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">{a.content}</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              }))}
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-800 flex justify-end">
+              <button 
+                onClick={() => setShowAnnouncementsModal(false)} 
+                className="px-4 py-2 bg-slate-850 hover:bg-slate-800 border border-slate-700 text-white rounded-xl text-sm font-medium transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

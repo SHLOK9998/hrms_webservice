@@ -149,10 +149,27 @@ export default function AdminLeaves() {
                         <p className="font-medium text-white">{leave.employee_name}</p>
                         <p className="text-xs text-slate-500">{leave.department}</p>
                       </td>
-                      <td className="table-cell"><span className="badge-blue">{leave.leave_type}</span></td>
                       <td className="table-cell">
-                        <p className="text-white text-xs">{leave.start_date}</p>
-                        <p className="text-slate-500 text-xs">to {leave.end_date}</p>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                          leave.leave_type === 'leave' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                          leave.leave_type === 'wfh' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                          'bg-purple-500/10 border-purple-500/20 text-purple-400'
+                        }`}>
+                          {leave.leave_type === 'leave' ? 'Leave' : leave.leave_type === 'wfh' ? 'WFH' : 'Missing Checkout'}
+                        </span>
+                      </td>
+                      <td className="table-cell">
+                        {leave.leave_type === 'missing_checkout' ? (
+                          <>
+                            <p className="text-white text-xs">{leave.start_date}</p>
+                            <p className="text-slate-500 text-xs">Time: {leave.missing_checkout_time}</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-white text-xs">{leave.start_date}</p>
+                            <p className="text-slate-500 text-xs">to {leave.end_date}</p>
+                          </>
+                        )}
                       </td>
                       <td className="table-cell max-w-xs">
                         <p className="text-slate-300 text-sm truncate">{leave.reason}</p>

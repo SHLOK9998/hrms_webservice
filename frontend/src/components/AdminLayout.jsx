@@ -2,7 +2,8 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, Users, CalendarCheck, Clock, DollarSign,
-  Megaphone, LogOut, ChevronRight, CalendarDays, CheckSquare, Users2
+  Megaphone, LogOut, ChevronRight, CalendarDays, CheckSquare, Users2,
+  ArrowLeftRight
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -18,9 +19,14 @@ const navItems = [
 ]
 
 export default function AdminLayout() {
-  const { user, logout } = useAuth()
+  const { user, logout, toggleViewMode } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
+
+  const handleToggle = () => {
+    const nextMode = toggleViewMode()
+    navigate(nextMode === 'admin' ? '/admin' : '/employee')
+  }
 
   return (
     <div className="flex h-screen bg-surface-950 overflow-hidden">
@@ -43,6 +49,23 @@ export default function AdminLayout() {
           )}
           <button onClick={() => setCollapsed(!collapsed)} className="p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 transition-colors">
             <ChevronRight className={`w-4 h-4 transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+          </button>
+        </div>
+
+        {/* Role Switcher */}
+        <div className="px-3 py-3 border-b border-slate-800/60 bg-slate-900/40">
+          <button
+            onClick={handleToggle}
+            title="Switch to Employee View"
+            className={`flex items-center gap-3 w-full py-2 rounded-xl bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/20 hover:border-brand-500/30 text-brand-400 hover:text-brand-300 transition-all duration-200 font-medium text-xs shadow-lg shadow-brand-500/5 cursor-pointer ${collapsed ? 'justify-center px-0' : 'px-3 text-left'}`}
+          >
+            <ArrowLeftRight className="w-4 h-4 flex-shrink-0" />
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <span className="block font-semibold text-white">Switch to Employee View</span>
+                <span className="block text-[10px] text-slate-400 font-normal">Check your tasks & leaves</span>
+              </div>
+            )}
           </button>
         </div>
 

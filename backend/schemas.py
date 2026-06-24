@@ -153,8 +153,9 @@ class ProfileUpdate(BaseModel):
 class LeaveCreate(BaseModel):
     leave_type: str
     start_date: str
-    end_date: str
+    end_date: Optional[str] = None
     reason: str
+    missing_checkout_time: Optional[str] = None
 
 class LeaveUpdate(BaseModel):
     status: LeaveStatus

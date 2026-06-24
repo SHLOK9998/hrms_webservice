@@ -3,13 +3,17 @@ import { Plus, X, Check, CalendarCheck, Clock, CheckCircle, XCircle, Trash2 } fr
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 
-const LEAVE_TYPES = ['Sick Leave', 'Casual Leave', 'Annual Leave', 'Maternity Leave', 'Paternity Leave', 'Emergency Leave', 'Unpaid Leave']
+const LEAVE_TYPES = [
+  { value: 'leave', label: 'Leave' },
+  { value: 'wfh', label: 'Work From Home (WFH)' },
+  { value: 'missing_checkout', label: 'Missing Checkout Time' }
+]
 
 export default function EmployeeLeaves() {
   const [leaves, setLeaves] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ leave_type: '', start_date: '', end_date: '', reason: '' })
+  const [form, setForm] = useState({ leave_type: '', start_date: '', end_date: '', missing_checkout_time: '', reason: '' })
   const [saving, setSaving] = useState(false)
   const [profile, setProfile] = useState(null)
 
@@ -31,10 +35,16 @@ export default function EmployeeLeaves() {
     e.preventDefault()
     setSaving(true)
     try {
-      await api.post('/leaves/', form)
-      toast.success('Leave request submitted!')
+      const payload = { ...form }
+      if (payload.leave_type === 'missing_checkout') {
+        payload.end_date = payload.start_date
+      } else {
+        payload.missing_checkout_time = null
+      }
+      await api.post('/leaves/', payload)
+      toast.success('Request submitted successfully!')
       setShowModal(false)
-      setForm({ leave_type: '', start_date: '', end_date: '', reason: '' })
+      setForm({ leave_type: '', start_date: '', end_date: '', missing_checkout_time: '', reason: '' })
       fetch()
     } catch (err) { toast.error(err.response?.data?.detail || 'Failed') }
     setSaving(false)
@@ -103,10 +113,16 @@ export default function EmployeeLeaves() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-white">{l.leave_type}</span>
+                      <span className="font-semibold text-white">
+                        {l.leave_type === 'leave' ? 'Leave' : l.leave_type === 'wfh' ? 'Work From Home (WFH)' : 'Missing Checkout'}
+                      </span>
                       {badge(l.status)}
                     </div>
-                    <p className="text-sm text-slate-400 mt-0.5">{l.start_date} → {l.end_date}</p>
+                    {l.leave_type === 'missing_checkout' ? (
+                      <p className="text-sm text-slate-400 mt-0.5">Date: {l.start_date} · Time: {l.missing_checkout_time}</p>
+                    ) : (
+                      <p className="text-sm text-slate-400 mt-0.5">{l.start_date} → {l.end_date}</p>
+                    )}
                     <p className="text-sm text-slate-300 mt-1">{l.reason}</p>
                     {l.admin_comment && (
                       <p className="text-xs text-slate-400 mt-1 bg-slate-800/50 px-3 py-1.5 rounded-lg inline-block">
@@ -138,22 +154,35 @@ export default function EmployeeLeaves() {
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="label">Leave Type</label>
+                <label className="label">Request Type</label>
                 <select className="input" value={form.leave_type} onChange={set('leave_type')} required>
-                  <option value="">Select leave type</option>
-                  {LEAVE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  <option value="">Select type</option>
+                  {LEAVE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Start Date</label>
-                  <input type="date" className="input" value={form.start_date} onChange={set('start_date')} required />
+              {form.leave_type === 'missing_checkout' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Date</label>
+                    <input type="date" className="input" value={form.start_date} onChange={set('start_date')} required />
+                  </div>
+                  <div>
+                    <label className="label">Missing Checkout Time</label>
+                    <input type="time" className="input" value={form.missing_checkout_time} onChange={set('missing_checkout_time')} required />
+                  </div>
                 </div>
-                <div>
-                  <label className="label">End Date</label>
-                  <input type="date" className="input" value={form.end_date} onChange={set('end_date')} required />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Start Date</label>
+                    <input type="date" className="input" value={form.start_date} onChange={set('start_date')} required={form.leave_type !== ''} />
+                  </div>
+                  <div>
+                    <label className="label">End Date</label>
+                    <input type="date" className="input" value={form.end_date} onChange={set('end_date')} required={form.leave_type !== ''} />
+                  </div>
                 </div>
-              </div>
+              )}
               <div>
                 <label className="label">Reason</label>
                 <textarea className="input h-24 resize-none" placeholder="Briefly explain the reason for leave..." value={form.reason} onChange={set('reason')} required />

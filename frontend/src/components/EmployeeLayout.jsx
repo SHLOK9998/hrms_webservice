@@ -2,7 +2,8 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, CalendarCheck, Clock,
-  DollarSign, LogOut, ChevronRight, Users2, CalendarDays, CheckSquare
+  DollarSign, LogOut, ChevronRight, Users2, CalendarDays, CheckSquare,
+  ArrowLeftRight
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -16,9 +17,14 @@ const navItems = [
 ]
 
 export default function EmployeeLayout() {
-  const { user, logout } = useAuth()
+  const { user, logout, toggleViewMode } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
+
+  const handleToggle = () => {
+    const nextMode = toggleViewMode()
+    navigate(nextMode === 'admin' ? '/admin' : '/employee')
+  }
 
   return (
     <div className="flex h-screen bg-surface-950 overflow-hidden">
@@ -41,6 +47,25 @@ export default function EmployeeLayout() {
             <ChevronRight className={`w-4 h-4 transition-transform ${collapsed ? '' : 'rotate-180'}`} />
           </button>
         </div>
+
+        {/* Role Switcher (Admin Only) */}
+        {user?.role === 'admin' && (
+          <div className="px-3 py-3 border-b border-slate-800/60 bg-slate-900/40">
+            <button
+              onClick={handleToggle}
+              title="Switch to Admin View"
+              className={`flex items-center gap-3 w-full py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/30 text-emerald-400 hover:text-emerald-300 transition-all duration-200 font-medium text-xs shadow-lg shadow-emerald-500/5 cursor-pointer ${collapsed ? 'justify-center px-0' : 'px-3 text-left'}`}
+            >
+              <ArrowLeftRight className="w-4 h-4 flex-shrink-0" />
+              {!collapsed && (
+                <div className="min-w-0 flex-1">
+                  <span className="block font-semibold text-white">Switch to Admin View</span>
+                  <span className="block text-[10px] text-slate-400 font-normal">Back to Manager Panel</span>
+                </div>
+              )}
+            </button>
+          </div>
+        )}
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map(({ to, label, icon: Icon, end }) => (

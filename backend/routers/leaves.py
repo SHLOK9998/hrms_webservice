@@ -97,21 +97,89 @@ async def update_leave_status(leave_id: str, update_data: LeaveUpdate, current_u
         raise HTTPException(status_code=404, detail="Leave not found")
         
     if old_status != new_status:
-        days = calculate_leave_days(leave.get("start_date"), leave.get("end_date"))
         email = leave.get("employee_email")
+        leave_type = leave.get("leave_type", "leave")
         
-        if new_status == "approved":
-            # Deduct days
-            await db.employees.update_one(
-                {"email": email, "organization_id": current_user["organization_id"]},
-                {"$inc": {"leave_balance": -days}}
-            )
-        elif old_status == "approved" and new_status != "approved":
-            # Restore days
-            await db.employees.update_one(
-                {"email": email, "organization_id": current_user["organization_id"]},
-                {"$inc": {"leave_balance": days}}
-            )
+        if leave_type == "leave":
+            days = calculate_leave_days(leave.get("start_date"), leave.get("end_date"))
+            if new_status == "approved":
+                # Deduct days
+                await db.employees.update_one(
+                    {"email": email, "organization_id": current_user["organization_id"]},
+                    {"$inc": {"leave_balance": -days}}
+                )
+            elif old_status == "approved" and new_status != "approved":
+                # Restore days
+                await db.employees.update_one(
+                    {"email": email, "organization_id": current_user["organization_id"]},
+                    {"$inc": {"leave_balance": days}}
+                )
+        
+        elif leave_type == "missing_checkout" and new_status == "approved":
+            # Process missing checkout logic
+            date_str = leave["start_date"].split("T")[0]
+            raw_time = leave.get("missing_checkout_time") or "18:00:00"
+            if len(raw_time.split(":")) == 2:
+                raw_time = f"{raw_time}:00"
+                
+            attendance_rec = await db.attendance.find_one({
+                "employee_email": email,
+                "date": date_str,
+                "organization_id": current_user["organization_id"]
+            })
+            
+            if attendance_rec:
+                # Update existing attendance record
+                try:
+                    check_in_time = datetime.strptime(attendance_rec["check_in"], "%H:%M:%S")
+                    check_out_time = datetime.strptime(raw_time, "%H:%M:%S")
+                    delta = check_out_time - check_in_time
+                    total_hours = round(delta.total_seconds() / 3600, 2)
+                    if total_hours < 0:
+                        total_hours = 0.0
+                except Exception:
+                    total_hours = 0.0
+                
+                await db.attendance.update_one(
+                    {"_id": attendance_rec["_id"]},
+                    {"$set": {
+                        "check_out": raw_time,
+                        "total_hours": total_hours,
+                        "updated_at": get_current_time()
+                    }}
+                )
+            else:
+                # Create a new attendance record (default checkin at "09:00:00")
+                employee = await db.employees.find_one({
+                    "email": email,
+                    "organization_id": current_user["organization_id"]
+                })
+                if employee:
+                    check_in_str = "09:00:00"
+                    try:
+                        check_in_time = datetime.strptime(check_in_str, "%H:%M:%S")
+                        check_out_time = datetime.strptime(raw_time, "%H:%M:%S")
+                        delta = check_out_time - check_in_time
+                        total_hours = round(delta.total_seconds() / 3600, 2)
+                        if total_hours < 0:
+                            total_hours = 0.0
+                    except Exception:
+                        total_hours = 0.0
+                        
+                    new_rec = {
+                        "employee_id": employee["employee_id"],
+                        "employee_name": employee["full_name"],
+                        "employee_email": email,
+                        "department": employee.get("department", ""),
+                        "date": date_str,
+                        "check_in": check_in_str,
+                        "check_out": raw_time,
+                        "total_hours": total_hours,
+                        "status": "present",
+                        "organization_id": current_user["organization_id"],
+                        "created_at": get_current_time(),
+                    }
+                    await db.attendance.insert_one(new_rec)
             
     return {"message": f"Leave {update_data.status.value} successfully"}
 

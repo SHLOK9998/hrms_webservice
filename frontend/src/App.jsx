@@ -28,13 +28,20 @@ import EmployeeHolidays from './pages/employee/Holidays'
 import EmployeeTasks from './pages/employee/Tasks'
 
 function ProtectedRoute({ children, role }) {
-  const { user, loading } = useAuth()
+  const { user, loading, viewMode } = useAuth()
   if (loading) return (
     <div className="min-h-screen bg-surface-950 flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
     </div>
   )
   if (!user) return <Navigate to="/login" replace />
+
+  if (user.role === 'admin') {
+    if (role === 'employee' && viewMode === 'employee') return children
+    if (role === 'admin' && viewMode === 'admin') return children
+    return <Navigate to={viewMode === 'admin' ? '/admin' : '/employee'} replace />
+  }
+
   if (role && user.role !== role) {
     if (user.role === 'superadmin') return <Navigate to="/superadmin" replace />
     return <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} replace />
@@ -43,15 +50,19 @@ function ProtectedRoute({ children, role }) {
 }
 
 function AppRoutes() {
-  const { user } = useAuth()
-  const getRedirectPath = (role) => {
-    if (role === 'superadmin') return '/superadmin'
-    return role === 'admin' ? '/admin' : '/employee'
+  const { user, viewMode } = useAuth()
+  const getRedirectPath = (u) => {
+    if (!u) return '/login'
+    if (u.role === 'superadmin') return '/superadmin'
+    if (u.role === 'admin') {
+      return viewMode === 'employee' ? '/employee' : '/admin'
+    }
+    return '/employee'
   }
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to={getRedirectPath(user?.role)} /> : <Login />} />
-      <Route path="/forgot-password" element={user ? <Navigate to={getRedirectPath(user?.role)} /> : <ForgotPassword />} />
+      <Route path="/login" element={user ? <Navigate to={getRedirectPath(user)} /> : <Login />} />
+      <Route path="/forgot-password" element={user ? <Navigate to={getRedirectPath(user)} /> : <ForgotPassword />} />
 
       <Route path="/superadmin" element={<ProtectedRoute role="superadmin"><SuperadminLayout /></ProtectedRoute>}>
         <Route index element={<SuperadminDashboard />} />
@@ -79,7 +90,7 @@ function AppRoutes() {
         <Route path="tasks" element={<EmployeeTasks />} />
       </Route>
 
-      <Route path="/" element={user ? <Navigate to={getRedirectPath(user?.role)} /> : <Navigate to="/login" />} />
+      <Route path="/" element={user ? <Navigate to={getRedirectPath(user)} /> : <Navigate to="/login" />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )

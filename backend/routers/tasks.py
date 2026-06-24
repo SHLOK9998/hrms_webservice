@@ -51,17 +51,19 @@ def can_access_task(task, user):
     return email in assigned
 
 
-def can_change_stage(user):
-    """Admin cannot change task stage."""
-    return user["role"] != "admin"
+def can_change_stage(user, task):
+    """Admin cannot change task stage, unless they are assigned to it."""
+    if user["role"] == "admin":
+        assigned = task.get("assigned_to", [])
+        if isinstance(assigned, str):
+            assigned = [assigned]
+        return user["email"] in assigned
+    return True
 
 
 async def validate_not_admin(db, emails, organization_id):
-    """Ensure none of the assignees are admin users."""
-    for email in emails:
-        u = await db.users.find_one({"email": email, "organization_id": organization_id})
-        if u and u.get("role") == "admin":
-            raise HTTPException(400, f"Cannot assign task to admin user: {email}")
+    """No longer restricts admins from being assigned tasks."""
+    pass
 
 
 def validate_stage_transition(current_status, new_status):
@@ -159,15 +161,9 @@ async def get_task_stats(current_user=Depends(get_current_user)):
 
 @router.get("/employees-for-assign")
 async def get_employees_for_assign(current_user=Depends(get_current_user)):
-    """Return non-admin employees for task assignment dropdowns."""
+    """Return all employees for task assignment dropdowns."""
     db = get_database()
-    admin_emails_cursor = db.users.find({
-        "role": "admin",
-        "organization_id": current_user["organization_id"]
-    }, {"email": 1})
-    admin_emails = [u["email"] async for u in admin_emails_cursor]
     employees = await db.employees.find({
-        "email": {"$nin": admin_emails},
         "organization_id": current_user["organization_id"]
     }).sort("full_name", 1).to_list(500)
     return [{"email": e["email"], "full_name": e["full_name"],
@@ -326,7 +322,7 @@ async def update_task(task_id: str, data: TaskUpdate, current_user=Depends(get_c
 
     # If updating status, admin cannot and must follow stage rules, and only assignee can update status
     if "status" in update_dict:
-        if not can_change_stage(current_user):
+        if not can_change_stage(current_user, task):
             raise HTTPException(403, "Admin cannot change task stage")
         assigned = task.get("assigned_to", [])
         if isinstance(assigned, str):
@@ -371,7 +367,7 @@ async def update_task_status(task_id: str, status: TaskStatus, current_user=Depe
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
-    if not can_change_stage(current_user):
+    if not can_change_stage(current_user, task):
         raise HTTPException(403, "Admin cannot change task stage")
 
     assigned = task.get("assigned_to", [])
