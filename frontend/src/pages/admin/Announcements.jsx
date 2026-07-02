@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Bell, Plus, Trash2, X, Check, Megaphone } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Bell, Plus, Trash2, X, Check, Megaphone, Paperclip } from 'lucide-react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 
@@ -9,6 +9,8 @@ export default function AdminAnnouncements() {
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ title: '', content: '', priority: 'normal' })
   const [saving, setSaving] = useState(false)
+  const [fileToAttach, setFileToAttach] = useState(null)
+  const fileRef = useRef(null)
 
   const fetch = async () => {
     try {
@@ -20,14 +22,31 @@ export default function AdminAnnouncements() {
 
   useEffect(() => { fetch() }, [])
 
+  const closeModal = () => {
+    setShowModal(false)
+    setForm({ title: '', content: '', priority: 'normal' })
+    setFileToAttach(null)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
   const handleSave = async (e) => {
     e.preventDefault()
+    if (fileToAttach && fileToAttach.size > 2 * 1024 * 1024) {
+      toast.error('File size exceeds 2 MB limit')
+      return
+    }
     setSaving(true)
     try {
-      await api.post('/announcements/', form)
+      const res = await api.post('/announcements/', form)
+      if (fileToAttach) {
+        const formData = new FormData()
+        formData.append('file', fileToAttach)
+        await api.post(`/announcements/${res.data._id}/attachment`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      }
       toast.success('Announcement posted!')
-      setShowModal(false)
-      setForm({ title: '', content: '', priority: 'normal' })
+      closeModal()
       fetch()
     } catch { toast.error('Failed') }
     setSaving(false)
@@ -83,6 +102,15 @@ export default function AdminAnnouncements() {
                     </div>
                     <p className="text-slate-300 text-sm mt-1">{ann.content}</p>
                     <p className="text-slate-500 text-xs mt-2">By {ann.created_by} · {ann.created_at?.split('T')[0]}</p>
+                    {ann.attachment && (
+                      <div className="mt-3 flex items-center gap-2 text-xs text-brand-400 bg-brand-500/5 hover:bg-brand-500/10 transition-colors w-fit px-3 py-1.5 rounded-xl border border-brand-500/10">
+                        <Paperclip className="w-3.5 h-3.5" />
+                        <a href={`${api.defaults.baseURL}/announcements/${ann._id}/attachment/download`} target="_blank" rel="noopener noreferrer" className="hover:underline truncate max-w-[200px]">
+                          {ann.attachment.filename}
+                        </a>
+                        <span className="text-slate-500">({(ann.attachment.size / 1024).toFixed(0)} KB)</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => handleDelete(ann._id)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors flex-shrink-0">
@@ -99,7 +127,7 @@ export default function AdminAnnouncements() {
           <div className="bg-surface-900 border border-slate-700 rounded-2xl w-full max-w-lg animate-slide-up">
             <div className="flex items-center justify-between p-6 border-b border-slate-800">
               <h2 className="text-lg font-semibold text-white">New Announcement</h2>
-              <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400"><X className="w-5 h-5" /></button>
+              <button onClick={closeModal} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleSave} className="p-6 space-y-4">
               <div>
@@ -118,8 +146,13 @@ export default function AdminAnnouncements() {
                   <option value="low">Low Priority</option>
                 </select>
               </div>
+              <div>
+                <label className="label">Attachment (optional, max 2MB)</label>
+                <input type="file" ref={fileRef} className="input file:mr-4 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-brand-500/10 file:text-brand-400 hover:file:bg-brand-500/20" 
+                  onChange={e => setFileToAttach(e.target.files[0] || null)} />
+              </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1 justify-center">Cancel</button>
+                <button type="button" onClick={closeModal} className="btn-secondary flex-1 justify-center">Cancel</button>
                 <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
                   {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
                   Post Announcement

@@ -21,7 +21,8 @@ from database import get_database
 from schemas import (
     TaskCreate, TaskUpdate, TaskComment, ChecklistCreate,
     ChecklistItemCreate, TaskStatus, STAGE_ORDER,
-    TaskCheckSimilarity, TaskSimilarityResponse
+    TaskCheckSimilarity, TaskSimilarityResponse,
+    TaskExtensionRequest, TaskExtensionRespond
 )
 from utils.auth import get_current_tenant_user as get_current_user
 from utils.embeddings import get_embedding, cosine_similarity
@@ -59,6 +60,19 @@ def can_change_stage(user, task):
             assigned = [assigned]
         return user["email"] in assigned
     return True
+
+
+def verify_not_done(task):
+    if task.get("status") == "done":
+        raise HTTPException(400, "Cannot modify a completed task")
+
+
+def verify_is_assignee(task, user):
+    assigned = task.get("assigned_to", [])
+    if isinstance(assigned, str):
+        assigned = [assigned]
+    if user["email"] not in assigned:
+        raise HTTPException(403, "Only task assignees can manage checklists")
 
 
 async def validate_not_admin(db, emails, organization_id):
@@ -316,6 +330,9 @@ async def update_task(task_id: str, data: TaskUpdate, current_user=Depends(get_c
 
     update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
 
+    if task.get("status") == "done" and "description" in update_dict:
+        raise HTTPException(400, "Cannot update description of a completed task")
+
     # If updating assignees, validate no admin users
     if "assigned_to" in update_dict:
         await validate_not_admin(db, update_dict["assigned_to"], current_user["organization_id"])
@@ -436,6 +453,8 @@ async def add_checklist(task_id: str, data: ChecklistCreate, current_user=Depend
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
+    verify_is_assignee(task, current_user)
     checklist = {
         "id": str(uuid.uuid4()),
         "title": data.title,
@@ -457,6 +476,8 @@ async def rename_checklist(task_id: str, checklist_id: str, data: ChecklistCreat
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
+    verify_is_assignee(task, current_user)
     await db.tasks.update_one(
         {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"], "checklists.id": checklist_id},
         {"$set": {"checklists.$.title": data.title, "updated_at": get_current_time()}},
@@ -472,6 +493,8 @@ async def delete_checklist(task_id: str, checklist_id: str, current_user=Depends
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
+    verify_is_assignee(task, current_user)
     await db.tasks.update_one(
         {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$pull": {"checklists": {"id": checklist_id}}, "$set": {"updated_at": get_current_time()}},
@@ -487,6 +510,8 @@ async def add_checklist_item(task_id: str, checklist_id: str, data: ChecklistIte
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
+    verify_is_assignee(task, current_user)
     item = {
         "id": str(uuid.uuid4()),
         "title": data.title,
@@ -517,6 +542,8 @@ async def toggle_checklist_item(task_id: str, checklist_id: str, item_id: str, c
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
+    verify_is_assignee(task, current_user)
     checklists = task.get("checklists", [])
     for cl in checklists:
         if cl["id"] == checklist_id:
@@ -540,6 +567,8 @@ async def rename_checklist_item(task_id: str, checklist_id: str, item_id: str, d
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
+    verify_is_assignee(task, current_user)
     checklists = task.get("checklists", [])
     for cl in checklists:
         if cl["id"] == checklist_id:
@@ -563,6 +592,8 @@ async def delete_checklist_item(task_id: str, checklist_id: str, item_id: str, c
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
+    verify_is_assignee(task, current_user)
     checklists = task.get("checklists", [])
     for cl in checklists:
         if cl["id"] == checklist_id:
@@ -585,6 +616,7 @@ async def upload_attachment(task_id: str, file: UploadFile = File(...), current_
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
 
     contents = await file.read()
     if len(contents) > MAX_ATTACHMENT_SIZE:
@@ -636,6 +668,7 @@ async def delete_attachment(task_id: str, attachment_id: str, current_user=Depen
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
     await db.tasks.update_one(
         {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
         {"$pull": {"attachments": {"id": attachment_id}}, "$set": {"updated_at": datetime.utcnow()}},
@@ -653,6 +686,7 @@ async def add_assignee(task_id: str, email: str = Query(...), current_user=Depen
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
     await validate_not_admin(db, [email], current_user["organization_id"])
     assigned = task.get("assigned_to", [])
     if isinstance(assigned, str):
@@ -682,7 +716,14 @@ async def remove_assignee(task_id: str, email: str, current_user=Depends(get_cur
         raise HTTPException(404, "Task not found")
     if not can_access_task(task, current_user):
         raise HTTPException(403, "Access denied")
+    verify_not_done(task)
     
+    assigned = task.get("assigned_to", [])
+    if isinstance(assigned, str):
+        assigned = [assigned]
+    if len(assigned) <= 1:
+        raise HTTPException(400, "At least one assignee must remain assigned to the task")
+
     # Assignee dev cannot remove themselves unless they are the creator (assigner) or admin
     if current_user["email"] == email and current_user["role"] != "admin" and task.get("created_by_email") != current_user["email"]:
         raise HTTPException(403, "You cannot remove yourself from this task. Only the assigner or other assignees can remove you.")
@@ -700,3 +741,91 @@ async def remove_assignee(task_id: str, email: str, current_user=Depends(get_cur
         },
     )
     return {"message": f"{email} removed from assignees"}
+
+
+@router.post("/{task_id}/extension-request")
+async def request_task_extension(task_id: str, data: TaskExtensionRequest, current_user=Depends(get_current_user)):
+    db = get_database()
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
+    if not task:
+        raise HTTPException(404, "Task not found")
+    if not can_access_task(task, current_user):
+        raise HTTPException(403, "Access denied")
+    if task.get("status") == "done":
+        raise HTTPException(400, "Cannot request due date extension for a completed task")
+    if task.get("due_date"):
+        current_due_str = task["due_date"][:10]
+        requested_due_str = data.requested_date[:10]
+        if requested_due_str <= current_due_str:
+            raise HTTPException(400, "Requested date must be after the current due date")
+    
+    extension_req = {
+        "requested_date": data.requested_date,
+        "reason": data.reason,
+        "requested_by": current_user["email"],
+        "requested_by_name": current_user["full_name"],
+        "requested_at": get_current_time().isoformat(),
+        "status": "pending"
+    }
+    
+    activity_entry = {
+        "action": f"Requested extension to {data.requested_date} (Reason: {data.reason})",
+        "by": current_user["full_name"],
+        "at": get_current_time().isoformat(),
+    }
+    
+    await db.tasks.update_one(
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
+        {
+            "$set": {"extension_request": extension_req, "updated_at": get_current_time()},
+            "$push": {"activity": activity_entry}
+        }
+    )
+    return {"message": "Extension request submitted successfully", "extension_request": extension_req}
+
+
+@router.post("/{task_id}/extension-respond")
+async def respond_task_extension(task_id: str, data: TaskExtensionRespond, current_user=Depends(get_current_user)):
+    db = get_database()
+    task = await db.tasks.find_one({"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]})
+    if not task:
+        raise HTTPException(404, "Task not found")
+    
+    if current_user["role"] != "admin":
+        raise HTTPException(403, "Only admins can respond to extension requests")
+    
+    ext_req = task.get("extension_request")
+    if not ext_req or ext_req.get("status") != "pending":
+        raise HTTPException(400, "No pending extension request found for this task")
+    
+    action = data.action.lower()
+    if action not in ["approve", "reject"]:
+        raise HTTPException(400, "Invalid action. Must be 'approve' or 'reject'")
+    
+    updated_status = "approved" if action == "approve" else "rejected"
+    
+    update_set = {
+        "extension_request.status": updated_status,
+        "updated_at": get_current_time()
+    }
+    
+    if action == "approve":
+        update_set["due_date"] = ext_req["requested_date"]
+        action_text = f"Extension request approved by admin. New due date: {ext_req['requested_date']}"
+    else:
+        action_text = "Extension request rejected by admin"
+        
+    activity_entry = {
+        "action": action_text,
+        "by": current_user["full_name"],
+        "at": get_current_time().isoformat(),
+    }
+    
+    await db.tasks.update_one(
+        {"_id": ObjectId(task_id), "organization_id": current_user["organization_id"]},
+        {
+            "$set": update_set,
+            "$push": {"activity": activity_entry}
+        }
+    )
+    return {"message": f"Extension request {updated_status}"}

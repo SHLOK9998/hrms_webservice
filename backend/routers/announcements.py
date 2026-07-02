@@ -1,9 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Response
 from utils.timezone import get_current_time
 from bson import ObjectId
 from database import get_database
 from schemas import AnnouncementCreate
 from utils.auth import get_current_admin, get_current_tenant_user
+import uuid
+import base64
+
+MAX_ATTACHMENT_SIZE = 2 * 1024 * 1024
 
 router = APIRouter(prefix="/api/announcements", tags=["Announcements"])
 
@@ -40,3 +44,44 @@ async def delete_announcement(announcement_id: str, current_user=Depends(get_cur
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Announcement not found")
     return {"message": "Deleted successfully"}
+
+
+@router.post("/{announcement_id}/attachment")
+async def upload_announcement_attachment(announcement_id: str, file: UploadFile = File(...), current_user=Depends(get_current_admin)):
+    db = get_database()
+    ann = await db.announcements.find_one({"_id": ObjectId(announcement_id), "organization_id": current_user["organization_id"]})
+    if not ann:
+        raise HTTPException(404, "Announcement not found")
+    
+    contents = await file.read()
+    if len(contents) > MAX_ATTACHMENT_SIZE:
+        raise HTTPException(400, "File size exceeds 2 MB limit")
+    
+    attachment = {
+        "id": str(uuid.uuid4()),
+        "filename": file.filename,
+        "content_type": file.content_type or "application/octet-stream",
+        "size": len(contents),
+        "data": base64.b64encode(contents).decode("utf-8"),
+        "uploaded_at": get_current_time().isoformat(),
+    }
+    await db.announcements.update_one(
+        {"_id": ObjectId(announcement_id)},
+        {"$set": {"attachment": attachment}}
+    )
+    return {"message": "Attachment uploaded successfully"}
+
+
+@router.get("/{announcement_id}/attachment/download")
+async def download_announcement_attachment(announcement_id: str, current_user=Depends(get_current_tenant_user)):
+    db = get_database()
+    ann = await db.announcements.find_one({"_id": ObjectId(announcement_id), "organization_id": current_user["organization_id"]})
+    if not ann or "attachment" not in ann:
+        raise HTTPException(404, "Attachment not found")
+    att = ann["attachment"]
+    data = base64.b64decode(att["data"])
+    return Response(
+        content=data,
+        media_type=att["content_type"],
+        headers={"Content-Disposition": f'attachment; filename="{att["filename"]}"'},
+    )

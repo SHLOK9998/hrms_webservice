@@ -228,6 +228,13 @@ class ChecklistCreate(BaseModel):
 class ChecklistItemCreate(BaseModel):
     title: str
 
+class TaskExtensionRequest(BaseModel):
+    requested_date: str
+    reason: str
+
+class TaskExtensionRespond(BaseModel):
+    action: str  # "approve" or "reject"
+
 class TaskCheckSimilarity(BaseModel):
     title: str
     description: Optional[str] = None

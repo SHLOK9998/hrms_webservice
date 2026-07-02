@@ -3,6 +3,7 @@ import { CheckSquare, Plus, X, Search, MessageSquare, Trash2, Eye, Paperclip, Us
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import { format, parseISO, isAfter } from 'date-fns'
+import { useAuth } from '../../context/AuthContext'
 
 const STAGES = [
   { key: 'todo', label: 'To Do', dot: 'bg-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/30' },
@@ -66,7 +67,9 @@ const AssigneeAvatars = ({ emails }) => {
 }
 
 export default function AdminTasks() {
+  const { user } = useAuth()
   const [tasks, setTasks] = useState([])
+  const [activeTab, setActiveTab] = useState('board')
   const [assignableEmps, setAssignableEmps] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -81,6 +84,15 @@ export default function AdminTasks() {
   const [fileToAttach, setFileToAttach] = useState(null)
   const fileRef = useRef(null)
   const detailFileRef = useRef(null)
+
+  const [showExtensionForm, setShowExtensionForm] = useState(false)
+  const [extDate, setExtDate] = useState('')
+  const [extReason, setExtReason] = useState('')
+  const [submittingExtension, setSubmittingExtension] = useState(false)
+
+  const [isEditingDesc, setIsEditingDesc] = useState(false)
+  const [descText, setDescText] = useState('')
+  const [savingDesc, setSavingDesc] = useState(false)
 
   const [similarTasks, setSimilarTasks] = useState([])
   const [showSimilarityWarning, setShowSimilarityWarning] = useState(false)
@@ -267,11 +279,69 @@ export default function AdminTasks() {
     } catch { toast.error('Failed') }
   }
 
+  const handleExtensionSubmit = async () => {
+    if (!extDate || !extReason.trim() || !selected) {
+      return toast.error('Please fill in both the date and the reason')
+    }
+    if (selected.due_date) {
+      const currentDue = selected.due_date.split('T')[0]
+      const requestedDue = extDate.split('T')[0]
+      if (requestedDue <= currentDue) {
+        return toast.error('Requested date must be after the current due date')
+      }
+    }
+    setSubmittingExtension(true)
+    try {
+      const res = await api.post(`/tasks/${selected._id}/extension-request`, {
+        requested_date: extDate,
+        reason: extReason,
+      })
+      toast.success('Extension request submitted!')
+      setShowExtensionForm(false)
+      refreshSelected(selected._id)
+      fetchTasks()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to submit request')
+    } finally {
+      setSubmittingExtension(false)
+    }
+  }
+
+  const handleExtensionRespond = async (action) => {
+    if (!selected) return
+    try {
+      await api.post(`/tasks/${selected._id}/extension-respond`, { action })
+      toast.success(`Extension request ${action}ed successfully!`)
+      refreshSelected(selected._id)
+      fetchTasks()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to respond to request')
+    }
+  }
+
+  const handleSaveDescription = async () => {
+    if (!selected) return
+    setSavingDesc(true)
+    try {
+      await api.put(`/tasks/${selected._id}`, { description: descText })
+      toast.success('Description updated')
+      setIsEditingDesc(false)
+      refreshSelected(selected._id)
+      fetchTasks()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to update description')
+    } finally {
+      setSavingDesc(false)
+    }
+  }
+
   const filtered = tasks.filter(t => {
     if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
   const isOverdue = (task) => task.due_date && task.status !== 'done' && !isAfter(parseISO(task.due_date), new Date())
+
+  const pendingRequests = tasks.filter(t => t.extension_request && t.extension_request.status === 'pending')
 
   const toggleAssignee = (email) => {
     setForm(prev => ({
@@ -281,6 +351,13 @@ export default function AdminTasks() {
         : [...prev.assigned_to, email]
     }))
   }
+
+  const isAssignee = selected && (Array.isArray(selected.assigned_to)
+    ? selected.assigned_to.includes(user?.email)
+    : selected.assigned_to === user?.email);
+  const isAssigner = selected && (selected.created_by_email === user?.email || selected.created_by === user?.email);
+  const isAdmin = user?.role === 'admin';
+  const canUpdateDesc = selected && selected.status !== 'done' && (isAdmin || isAssignee || isAssigner);
 
   return (
     <div className="p-6 space-y-5 animate-fade-in">
@@ -292,56 +369,228 @@ export default function AdminTasks() {
         <button onClick={() => setShowCreate(true)} className="btn-primary"><Plus className="w-4 h-4" /> New Task</button>
       </div>
 
+      <div className="flex border-b border-slate-800">
+        <button 
+          onClick={() => setActiveTab('board')} 
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'board' ? 'border-brand-500 text-brand-400 font-bold' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          Active Boards
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')} 
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'history' ? 'border-brand-500 text-brand-400 font-bold' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          Task History
+        </button>
+      </div>
+
       <div className="relative max-w-sm">
         <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
         <input className="input !pl-9" placeholder="Search tasks..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Kanban Board */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" style={{ minHeight: '60vh' }}>
-        {STAGES.map(stage => {
-          const stageTasks = filtered.filter(t => t.status === stage.key)
-          return (
-            <div key={stage.key} className={`w-full rounded-2xl border ${stage.border} ${stage.bg} p-4 flex flex-col`}>
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <div className={`w-2.5 h-2.5 rounded-full ${stage.dot}`} />
-                <span className="text-sm font-semibold text-white">{stage.label}</span>
-                <span className="text-xs text-slate-500 ml-auto">{stageTasks.length}</span>
-              </div>
-              <div className="space-y-2.5 min-h-[100px]">
-                {stageTasks.map(task => {
-                  const overdue = isOverdue(task)
-                  const assignees = Array.isArray(task.assigned_to) ? task.assigned_to : (task.assigned_to ? [task.assigned_to] : [])
-                  return (
-                    <div key={task._id}
-                      onClick={() => { setSelected(null); setTimeout(() => refreshSelected(task._id), 50) }}
-                      className={`card !p-3 cursor-pointer hover:border-slate-500 transition-all ${overdue ? 'border-red-500/40' : ''}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${PRIORITY_CONFIG[task.priority]?.bg} ${PRIORITY_CONFIG[task.priority]?.color}`}>{task.priority}</span>
-                        <div className="flex items-center gap-1.5">
+      {activeTab === 'history' ? (
+        <div className="card p-0 overflow-hidden animate-fade-in">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-800/50">
+                <tr>
+                  {['Task Title', 'Project', 'Priority', 'Completed Date', 'Assignees', 'Action'].map(h => (
+                    <th key={h} className="table-header text-left">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.filter(t => t.status === 'done').length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="table-cell text-center text-slate-500 py-12">
+                      No completed tasks found.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.filter(t => t.status === 'done').map(task => {
+                    const assignees = Array.isArray(task.assigned_to) ? task.assigned_to : (task.assigned_to ? [task.assigned_to] : [])
+                    const compDate = task.updated_at || task.due_date || task.created_at
+                    return (
+                      <tr key={task._id} className="table-row">
+                        <td className="table-cell">
+                          <p className="font-semibold text-white cursor-pointer hover:text-brand-400 transition-colors"
+                            onClick={() => { setSelected(null); setTimeout(() => refreshSelected(task._id), 50) }}>
+                            {task.title}
+                          </p>
+                        </td>
+                        <td className="table-cell text-slate-300">
+                          {task.project ? <span className="badge-gray">{task.project}</span> : '—'}
+                        </td>
+                        <td className="table-cell">
+                          <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize ${PRIORITY_CONFIG[task.priority]?.bg} ${PRIORITY_CONFIG[task.priority]?.color}`}>
+                            {task.priority}
+                          </span>
+                        </td>
+                        <td className="table-cell text-slate-400">
+                          {compDate ? format(parseISO(compDate), 'dd MMM yyyy') : '—'}
+                        </td>
+                        <td className="table-cell">
                           <AssigneeAvatars emails={task.assigned_to} />
-                          <button onClick={e => { e.stopPropagation(); handleDelete(task._id) }} className="p-1 text-slate-500 hover:text-red-400 rounded transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </td>
+                        <td className="table-cell">
+                          <button
+                            onClick={() => { setSelected(null); setTimeout(() => refreshSelected(task._id), 50) }}
+                            className="btn-secondary !py-1 !px-3 text-xs"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Pending Extension Requests Section (Only visible when there are pending requests) */}
+          {pendingRequests.length > 0 && (
+            <div className="bg-surface-900/40 border border-amber-500/20 rounded-2xl p-5 space-y-4 animate-fade-in">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                <h2 className="text-lg font-bold text-white">Pending Due Date Extension Requests</h2>
+                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold px-2 py-0.5 rounded-full">
+                  {pendingRequests.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pendingRequests.map(task => {
+                  const req = task.extension_request;
+                  return (
+                    <div key={task._id} className="card !p-4 border border-slate-700/50 bg-slate-800/40 hover:border-slate-600 transition-all flex flex-col justify-between space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start gap-2">
+                          <h3 className="text-sm font-semibold text-white truncate" title={task.title}>{task.title}</h3>
+                          {task.project && <span className="text-[10px] font-medium px-2 py-0.5 bg-brand-500/10 text-brand-400 border border-brand-500/20 rounded-full">{task.project}</span>}
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900/40 p-2 rounded-xl border border-slate-800/50">
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase tracking-wider">Current Due</span>
+                            <span className="text-slate-300 font-medium">
+                              {task.due_date ? format(parseISO(task.due_date), 'dd MMM yyyy') : 'No Date'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase tracking-wider">Proposed Due</span>
+                            <span className="text-amber-400 font-semibold">
+                              {req.requested_date ? format(parseISO(req.requested_date), 'dd MMM yyyy') : ''}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <span className="text-slate-500 text-[10px] uppercase tracking-wider">Reason</span>
+                          <p className="text-xs text-slate-300 mt-0.5 line-clamp-2 bg-slate-900/20 p-2 rounded-lg border border-slate-800/30 whitespace-pre-wrap" title={req.reason}>
+                            {req.reason}
+                          </p>
                         </div>
                       </div>
-                      <p className={`text-sm font-semibold mb-1 ${overdue ? 'text-red-300' : 'text-white'}`}>{task.title}</p>
-                      {task.project && <p className="text-xs text-brand-400 mb-1">{task.project}</p>}
-                      {overdue && <span className="text-xs text-red-400">⚠ Overdue</span>}
-                      <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
-                        <span>{task.due_date ? format(parseISO(task.due_date), 'dd MMM') : ''}</span>
-                        <div className="flex items-center gap-2">
-                          {assignees.length > 0 && <span className="flex items-center gap-0.5"><Users className="w-3 h-3" />{assignees.length}</span>}
-                          {(task.comments || []).length > 0 && <span className="flex items-center gap-0.5"><MessageSquare className="w-3 h-3" />{task.comments.length}</span>}
-                          {(task.attachments || []).length > 0 && <span className="flex items-center gap-0.5"><Paperclip className="w-3 h-3" />{task.attachments.length}</span>}
+
+                      <div className="space-y-3 pt-2 border-t border-slate-700/30">
+                        <div className="flex justify-between items-center text-[10px] text-slate-500">
+                          <span>By: {req.requested_by_name || req.requested_by}</span>
+                          <span>{req.requested_at ? format(parseISO(req.requested_at), 'dd MMM') : ''}</span>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await api.post(`/tasks/${task._id}/extension-respond`, { action: 'approve' });
+                                toast.success('Approved successfully');
+                                fetchTasks();
+                                if (selected?._id === task._id) refreshSelected(task._id);
+                              } catch (err) {
+                                toast.error(err.response?.data?.detail || 'Failed');
+                              }
+                            }}
+                            className="flex-1 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/30 hover:border-emerald-500/40 transition-all text-center"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await api.post(`/tasks/${task._id}/extension-respond`, { action: 'reject' });
+                                toast.success('Rejected successfully');
+                                fetchTasks();
+                                if (selected?._id === task._id) refreshSelected(task._id);
+                              } catch (err) {
+                                toast.error(err.response?.data?.detail || 'Failed');
+                              }
+                            }}
+                            className="flex-1 py-1.5 rounded-xl text-xs font-semibold bg-red-600/20 text-red-400 border border-red-500/20 hover:bg-red-600/30 hover:border-red-500/40 transition-all text-center"
+                          >
+                            Reject
+                          </button>
                         </div>
                       </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
-          )
-        })}
-      </div>
+          )}
+
+          {/* Kanban Board */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" style={{ minHeight: '60vh' }}>
+            {STAGES.map(stage => {
+              const stageTasks = filtered.filter(t => {
+                if (stage.key === 'done') return false
+                return t.status === stage.key
+              })
+              return (
+                <div key={stage.key} className={`w-full rounded-2xl border ${stage.border} ${stage.bg} p-4 flex flex-col`}>
+                  <div className="flex items-center gap-2 mb-3 px-1">
+                    <div className={`w-2.5 h-2.5 rounded-full ${stage.dot}`} />
+                    <span className="text-sm font-semibold text-white">{stage.label}</span>
+                    <span className="text-xs text-slate-500 ml-auto">{stageTasks.length}</span>
+                  </div>
+                  <div className="space-y-2.5 min-h-[100px]">
+                    {stageTasks.map(task => {
+                      const overdue = isOverdue(task)
+                      const assignees = Array.isArray(task.assigned_to) ? task.assigned_to : (task.assigned_to ? [task.assigned_to] : [])
+                      return (
+                        <div key={task._id}
+                          onClick={() => { setSelected(null); setTimeout(() => refreshSelected(task._id), 50) }}
+                          className={`card !p-3 cursor-pointer hover:border-slate-500 transition-all ${overdue ? 'border-red-500/40' : ''}`}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${PRIORITY_CONFIG[task.priority]?.bg} ${PRIORITY_CONFIG[task.priority]?.color}`}>{task.priority}</span>
+                            <div className="flex items-center gap-1.5">
+                              <AssigneeAvatars emails={task.assigned_to} />
+                              <button onClick={e => { e.stopPropagation(); handleDelete(task._id) }} className="p-1 text-slate-500 hover:text-red-400 rounded transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </div>
+                          <p className={`text-sm font-semibold mb-1 ${overdue ? 'text-red-300' : 'text-white'}`}>{task.title}</p>
+                          {task.project && <p className="text-xs text-brand-400 mb-1">{task.project}</p>}
+                          {overdue && <span className="text-xs text-red-400">⚠ Overdue</span>}
+                          <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
+                            <span>{task.due_date ? format(parseISO(task.due_date), 'dd MMM') : ''}</span>
+                            <div className="flex items-center gap-2">
+                              {assignees.length > 0 && <span className="flex items-center gap-0.5"><Users className="w-3 h-3" />{assignees.length}</span>}
+                              {(task.comments || []).length > 0 && <span className="flex items-center gap-0.5"><MessageSquare className="w-3 h-3" />{task.comments.length}</span>}
+                              {(task.attachments || []).length > 0 && <span className="flex items-center gap-0.5"><Paperclip className="w-3 h-3" />{task.attachments.length}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {/* Create Task Modal */}
       {showCreate && (
@@ -490,6 +739,55 @@ export default function AdminTasks() {
         </div>
       )}
 
+      {/* Extension Request Modal */}
+      {showExtensionForm && selected && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+          <div className="bg-surface-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up">
+            <div className="flex items-center justify-between p-6 border-b border-slate-700">
+              <h2 className="text-lg font-bold text-white">Request Due Date Extension</h2>
+              <button onClick={() => setShowExtensionForm(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-400">
+                Requesting extension for task: <span className="text-white font-semibold">{selected.title}</span>
+              </p>
+              <div>
+                <label className="label">Proposed Due Date *</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={extDate}
+                  onChange={e => setExtDate(e.target.value)}
+                  min={selected.due_date ? new Date(new Date(selected.due_date).getTime() + 24*60*60*1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
+                  required
+                />
+              </div>
+              <div>
+                <label className="label">Reason *</label>
+                <textarea
+                  className="input !h-24 resize-none"
+                  placeholder="Describe why you need more time for this task..."
+                  value={extReason}
+                  onChange={e => setExtReason(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowExtensionForm(false)} className="btn-secondary flex-1">Cancel</button>
+                <button
+                  type="button"
+                  onClick={handleExtensionSubmit}
+                  disabled={submittingExtension}
+                  className="btn-primary flex-1 justify-center"
+                >
+                  {submittingExtension ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Submit Request'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Task Detail Side Panel */}
       {selected && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-end z-50">
@@ -518,9 +816,52 @@ export default function AdminTasks() {
                   <p className="text-white font-medium text-xs truncate">{selected.created_by}</p>
                 </div>
               </div>
-              {selected.description && (
-                <div><p className="text-xs text-slate-500 mb-2">Description</p><p className="text-sm text-slate-300 bg-slate-800/60 rounded-xl p-3">{selected.description}</p></div>
-              )}
+              {/* Description Section with Inline Editor */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-slate-500">Description</p>
+                  {canUpdateDesc && !isEditingDesc && (
+                    <button
+                      onClick={() => {
+                        setDescText(selected.description || '')
+                        setIsEditingDesc(true)
+                      }}
+                      className="text-[11px] text-brand-400 hover:text-brand-300 font-medium px-2 py-0.5 rounded hover:bg-brand-500/10 transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {isEditingDesc ? (
+                  <div className="space-y-2">
+                    <textarea
+                      className="input !h-24 resize-none text-sm w-full"
+                      value={descText}
+                      onChange={e => setDescText(e.target.value)}
+                      placeholder="Add description..."
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setIsEditingDesc(false)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveDescription}
+                        disabled={savingDesc}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-brand-600 text-white hover:bg-brand-500 transition-all"
+                      >
+                        {savingDesc ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-300 bg-slate-800/60 rounded-xl p-3 whitespace-pre-wrap">
+                    {selected.description || <span className="text-slate-500 italic">No description provided</span>}
+                  </p>
+                )}
+              </div>
 
               {/* Assignees */}
               <div>
@@ -529,16 +870,20 @@ export default function AdminTasks() {
                   {(Array.isArray(selected.assigned_to) ? selected.assigned_to : []).map(email => (
                     <div key={email} className="flex items-center justify-between p-2 bg-slate-800/60 rounded-lg">
                       <span className="text-sm text-slate-300 truncate">{email}</span>
-                      <button onClick={() => handleRemoveAssignee(email)} className="text-slate-500 hover:text-red-400 p-1"><X className="w-3.5 h-3.5" /></button>
+                      {selected.status !== 'done' && (
+                        <button onClick={() => handleRemoveAssignee(email)} className="text-slate-500 hover:text-red-400 p-1"><X className="w-3.5 h-3.5" /></button>
+                      )}
                     </div>
                   ))}
                 </div>
-                <select className="input !py-2 text-sm mt-2" defaultValue="" onChange={e => { if (e.target.value) { handleAddAssignee(e.target.value); e.target.value = '' } }}>
-                  <option value="">Add assignee...</option>
-                  {assignableEmps.filter(emp => !(Array.isArray(selected.assigned_to) ? selected.assigned_to : []).includes(emp.email)).map(emp => (
-                    <option key={emp.email} value={emp.email}>{emp.full_name}</option>
-                  ))}
-                </select>
+                {selected.status !== 'done' && (
+                  <select className="input !py-2 text-sm mt-2" defaultValue="" onChange={e => { if (e.target.value) { handleAddAssignee(e.target.value); e.target.value = '' } }}>
+                    <option value="">Add assignee...</option>
+                    {assignableEmps.filter(emp => !(Array.isArray(selected.assigned_to) ? selected.assigned_to : []).includes(emp.email)).map(emp => (
+                      <option key={emp.email} value={emp.email}>{emp.full_name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Attachments */}
@@ -554,13 +899,19 @@ export default function AdminTasks() {
                       </div>
                       <div className="flex items-center gap-1">
                         <a href={`${api.defaults.baseURL}/tasks/${selected._id}/attachments/${att.id}/download`} target="_blank" className="p-1 text-slate-400 hover:text-brand-400"><Download className="w-3.5 h-3.5" /></a>
-                        <button onClick={() => handleDeleteAttachment(att.id)} className="p-1 text-slate-500 hover:text-red-400"><X className="w-3.5 h-3.5" /></button>
+                        {selected.status !== 'done' && (
+                          <button onClick={() => handleDeleteAttachment(att.id)} className="p-1 text-slate-500 hover:text-red-400"><X className="w-3.5 h-3.5" /></button>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
-                <input ref={detailFileRef} type="file" className="hidden" onChange={e => { if (e.target.files[0]) handleUploadAttachment(selected._id, e.target.files[0]); e.target.value = '' }} />
-                <button onClick={() => detailFileRef.current?.click()} className="btn-secondary !py-2 text-sm mt-2 w-full justify-center"><Upload className="w-3.5 h-3.5" /> Upload (max 2MB)</button>
+                {selected.status !== 'done' && (
+                  <>
+                    <input ref={detailFileRef} type="file" className="hidden" onChange={e => { if (e.target.files[0]) handleUploadAttachment(selected._id, e.target.files[0]); e.target.value = '' }} />
+                    <button onClick={() => detailFileRef.current?.click()} className="btn-secondary !py-2 text-sm mt-2 w-full justify-center"><Upload className="w-3.5 h-3.5" /> Upload (max 2MB)</button>
+                  </>
+                )}
               </div>
 
               {/* Checklists */}
@@ -570,31 +921,39 @@ export default function AdminTasks() {
                   <div key={cl.id} className="mb-3 p-3 bg-slate-800/40 rounded-xl border border-slate-700/40">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-semibold text-white">{cl.title}</span>
-                      <button onClick={() => handleDeleteChecklist(cl.id)} className="text-slate-500 hover:text-red-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                      {selected.status !== 'done' && isAssignee && (
+                        <button onClick={() => handleDeleteChecklist(cl.id)} className="text-slate-500 hover:text-red-400 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                      )}
                     </div>
                     <div className="space-y-1">
                       {(cl.items || []).map(it => (
                         <div key={it.id} className="flex items-center gap-2 group">
-                          <button onClick={() => handleToggleClItem(cl.id, it.id)} className="flex-shrink-0">
+                          <button onClick={() => selected.status !== 'done' && isAssignee && handleToggleClItem(cl.id, it.id)} className="flex-shrink-0" disabled={selected.status === 'done' || !isAssignee}>
                             {it.done ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Circle className="w-4 h-4 text-slate-500" />}
                           </button>
                           <span className={`text-sm flex-1 ${it.done ? 'line-through text-slate-500' : 'text-slate-300'}`}>{it.title}</span>
-                          <button onClick={() => handleDeleteClItem(cl.id, it.id)} className="p-0.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3.5 h-3.5" /></button>
+                          {selected.status !== 'done' && isAssignee && (
+                            <button onClick={() => handleDeleteClItem(cl.id, it.id)} className="p-0.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3.5 h-3.5" /></button>
+                          )}
                         </div>
                       ))}
                     </div>
-                    <div className="flex gap-2 mt-2">
-                      <input className="input !py-1.5 text-sm" placeholder="Add item..." value={clItemTitle[cl.id] || ''} onChange={e => setClItemTitle(prev => ({ ...prev, [cl.id]: e.target.value }))}
-                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddClItem(cl.id))} />
-                      <button onClick={() => handleAddClItem(cl.id)} className="btn-secondary !py-1.5 !px-2"><Plus className="w-3.5 h-3.5" /></button>
-                    </div>
+                    {selected.status !== 'done' && isAssignee && (
+                      <div className="flex gap-2 mt-2">
+                        <input className="input !py-1.5 text-sm" placeholder="Add item..." value={clItemTitle[cl.id] || ''} onChange={e => setClItemTitle(prev => ({ ...prev, [cl.id]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddClItem(cl.id))} />
+                        <button onClick={() => handleAddClItem(cl.id)} className="btn-secondary !py-1.5 !px-2"><Plus className="w-3.5 h-3.5" /></button>
+                      </div>
+                    )}
                   </div>
                 ))}
-                <div className="flex gap-2">
-                  <input className="input !py-2 text-sm" placeholder="New checklist name..." value={clTitle} onChange={e => setClTitle(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddChecklist())} />
-                  <button onClick={handleAddChecklist} className="btn-secondary !py-2 !px-3"><Plus className="w-4 h-4" /></button>
-                </div>
+                {selected.status !== 'done' && isAssignee && (
+                  <div className="flex gap-2">
+                    <input className="input !py-2 text-sm" placeholder="New checklist name..." value={clTitle} onChange={e => setClTitle(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddChecklist())} />
+                    <button onClick={handleAddChecklist} className="btn-secondary !py-2 !px-3"><Plus className="w-4 h-4" /></button>
+                  </div>
+                )}
               </div>
 
               {/* Comments */}
@@ -617,6 +976,23 @@ export default function AdminTasks() {
                   <button onClick={handleAddComment} className="btn-secondary !py-2 !px-3"><MessageSquare className="w-4 h-4" /></button>
                 </div>
               </div>
+
+              {/* Due Date Extension Request */}
+              {selected.status !== 'done' && (!selected.extension_request || selected.extension_request.status !== 'pending') && (
+                <div className="border-t border-slate-700/50 pt-4 mt-2">
+                  <p className="text-xs text-slate-500 mb-2">Due Date Extension</p>
+                  <button
+                    onClick={() => {
+                      setExtDate(selected.due_date ? selected.due_date.split('T')[0] : '')
+                      setExtReason('')
+                      setShowExtensionForm(true)
+                    }}
+                    className="btn-secondary !py-2 text-xs w-full justify-center"
+                  >
+                    Request Extension
+                  </button>
+                </div>
+              )}
 
               {/* Activity */}
               {(selected.activity || []).length > 0 && (

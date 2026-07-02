@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Edit2, Trash2, X, Check, Users } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, X, Check, Users, Eye, EyeOff } from 'lucide-react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 
@@ -11,6 +11,7 @@ export default function AdminEmployees() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [editEmp, setEditEmp] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -36,10 +37,11 @@ export default function AdminEmployees() {
     ))
   }, [search, employees])
 
-  const openAdd = () => { setForm(EMPTY); setEditEmp(null); setShowModal(true) }
+  const openAdd = () => { setForm(EMPTY); setEditEmp(null); setShowPassword(false); setShowModal(true) }
   const openEdit = (emp) => {
     setForm({ ...EMPTY, ...emp, salary: emp.salary?.toString() || '', leave_balance: emp.leave_balance?.toString() || '12', role: emp.role || 'employee' })
     setEditEmp(emp)
+    setShowPassword(false)
     setShowModal(true)
   }
 
@@ -187,8 +189,34 @@ export default function AdminEmployees() {
               ].map(([label, field, type, ph]) => (
                 <div key={field}>
                   <label className="label">{label}</label>
-                  <input type={type} className="input" placeholder={ph} value={form[field] || ''} onChange={set(field)}
-                    required={['employee_id','full_name','email','password','department','designation','date_of_joining','salary'].includes(field)} />
+                  {field === 'password' ? (
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        className="input pr-10"
+                        placeholder={ph}
+                        value={form[field] || ''}
+                        onChange={set(field)}
+                        required={['employee_id', 'full_name', 'email', 'password', 'department', 'designation', 'date_of_joining', 'salary'].includes(field)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  ) : (
+                    <input
+                      type={type}
+                      className="input"
+                      placeholder={ph}
+                      value={form[field] || ''}
+                      onChange={set(field)}
+                      required={['employee_id', 'full_name', 'email', 'password', 'department', 'designation', 'date_of_joining', 'salary'].includes(field)}
+                    />
+                  )}
                 </div>
               ))}
               <div>

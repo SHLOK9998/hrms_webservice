@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Clock, CalendarCheck, DollarSign, Bell, LogIn, LogOut,
-  CheckSquare, CalendarDays, TrendingUp, AlertCircle, X, ChevronDown, ChevronUp
+  CheckSquare, CalendarDays, TrendingUp, AlertCircle, X, ChevronDown, ChevronUp, Paperclip
 } from 'lucide-react'
 import api from '../../utils/api'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
-import { format, differenceInDays, startOfDay } from 'date-fns'
+import { format, differenceInDays, startOfDay, parseISO } from 'date-fns'
 
 const STATUS_COLORS = {
   todo: 'text-slate-400',
@@ -400,6 +400,15 @@ export default function EmployeeDashboard() {
                     {isExpanded && (
                       <div className="px-4 pb-4 pt-2 border-t border-slate-800/60">
                         <p className="text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">{a.content}</p>
+                        {a.attachment && (
+                          <div className="mt-3 flex items-center gap-2 text-xs text-brand-400 bg-brand-500/5 hover:bg-brand-500/10 transition-colors w-fit px-3 py-1.5 rounded-xl border border-brand-500/10">
+                            <Paperclip className="w-3.5 h-3.5" />
+                            <a href={`${api.defaults.baseURL}/announcements/${a._id}/attachment/download`} target="_blank" rel="noopener noreferrer" className="hover:underline truncate max-w-[200px]">
+                              {a.attachment.filename}
+                            </a>
+                            <span className="text-slate-500">({(a.attachment.size / 1024).toFixed(0)} KB)</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

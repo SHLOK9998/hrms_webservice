@@ -171,7 +171,7 @@ export default function EmployeeProfile() {
       {/* Change Password Card */}
       <div className="card">
         <h3 className="font-semibold text-white mb-4">Change Password</h3>
-        <form onSubmit={handlePasswordChange} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+        <form onSubmit={handlePasswordChange} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-4 items-end">
           <div>
             <label className="label">Current Password</label>
             <input
@@ -194,30 +194,28 @@ export default function EmployeeProfile() {
               required
             />
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="label">Confirm Password</label>
-              <input
-                type="password"
-                className="input text-sm"
-                placeholder="Confirm Password"
-                value={passwordForm.confirm_password}
-                onChange={e => setPasswordForm(p => ({ ...p, confirm_password: e.target.value }))}
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={changingPassword}
-              className="btn-primary py-3 px-6 h-[46px] self-end justify-center"
-            >
-              {changingPassword ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                'Update'
-              )}
-            </button>
+          <div>
+            <label className="label">Confirm Password</label>
+            <input
+              type="password"
+              className="input text-sm"
+              placeholder="Confirm Password"
+              value={passwordForm.confirm_password}
+              onChange={e => setPasswordForm(p => ({ ...p, confirm_password: e.target.value }))}
+              required
+            />
           </div>
+          <button
+            type="submit"
+            disabled={changingPassword}
+            className="btn-primary py-3 px-6 h-[46px] justify-center"
+          >
+            {changingPassword ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              'Update'
+            )}
+          </button>
         </form>
       </div>
     </div>
